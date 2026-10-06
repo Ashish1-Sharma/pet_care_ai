@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_config.dart';
 import '../../config/app_routes.dart';
 import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_shadows.dart';
 import '../../config/theme/app_spacing.dart';
+import '../../models/user_model.dart';
 import '../../providers/app_provider.dart';
-import '../../widgets/gradient_card.dart';
-import '../home/navigation_container.dart';
+import '../../services/iap_service.dart';
 import '../login/login_screen.dart';
-import '../payment/buy_scans_screen.dart';
+import '../payment/paywall_screen.dart';
+import '../pets/my_pets_screen.dart';
+import '../reminders/reminders_screen.dart';
+import '../reminders/notification_primer.dart';
+import 'referral_card.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -58,14 +63,6 @@ class ProfileTab extends StatelessWidget {
     }
   }
 
-  /// The settings rows have no destinations yet; say so rather than
-  /// silently doing nothing.
-  void _notReady(BuildContext context, String label) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$label is coming soon')));
-  }
-
   void _showAbout(BuildContext context) {
     showAboutDialog(
       context: context,
@@ -75,6 +72,9 @@ class ProfileTab extends StatelessWidget {
         Icons.pets_rounded,
         color: AppColors.primaryDark,
       ),
+      children: const [
+        Text('AI guidance for pet owners. Not a substitute for a licensed veterinarian.'),
+      ],
     );
   }
 
@@ -83,223 +83,252 @@ class ProfileTab extends StatelessWidget {
     final provider = Provider.of<AppProvider>(context);
     final user = provider.currentUser;
     final theme = Theme.of(context);
-
     final name = user?.name ?? 'Pet Owner';
-    final scans = user?.remainingScans ?? 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('', style: theme.textTheme.headlineMedium),
-        toolbarHeight: 10,
-
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.gutter,
-          AppSpacing.sm,
-          AppSpacing.gutter,
-          kFloatingNavHeight + AppSpacing.lg,
-        ),
-        children: [
-          Center(
-            child: Column(
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xl),
+          children: [
+            Row(
               children: [
-                Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.gradientPrimary,
-                    shape: BoxShape.circle,
-                    boxShadow: AppShadows.glow(AppColors.teal, opacity: 0.28),
-                    image: user != null && user.profileImage.isNotEmpty
-                        ? DecorationImage(
-                            image: NetworkImage(user.profileImage),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  alignment: Alignment.center,
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: const Color(0xFFA03CBF),
+                  backgroundImage: user != null && user.profileImage.isNotEmpty
+                      ? NetworkImage(user.profileImage)
+                      : null,
                   child: user != null && user.profileImage.isNotEmpty
                       ? null
                       : Text(
-                          name.trim().isEmpty
-                              ? '?'
-                              : name.trim()[0].toUpperCase(),
-                          style: theme.textTheme.displayMedium?.copyWith(
-                            color: Colors.white,
-                          ),
+                          name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+                          style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white),
                         ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Text(name, style: theme.textTheme.headlineMedium, textAlign: TextAlign.center,),
-                const SizedBox(height: 2),
-                // Text(
-                //   provider.isDemoMode ? 'Demo account' : 'Google account',
-                //   style: theme.textTheme.bodyLarge?.copyWith(
-                //     color: AppColors.textMuted,
-                //   ),
-                // ),
-                Text(
-                  user?.email ?? 'owner@example.com',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.xl),
-
-          GradientCard(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.alpha(Colors.white, 0.2),
-                    borderRadius: AppRadius.brMd,
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 28,
-                  ),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(name, style: theme.textTheme.headlineSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
                       Text(
-                        'SCAN BALANCE',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: AppColors.alpha(Colors.white, 0.75),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '$scans',
-                            style: theme.textTheme.displaySmall?.copyWith(
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            scans == 1 ? 'scan left' : 'scans left',
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: AppColors.alpha(Colors.white, 0.9),
-                            ),
-                          ),
-                        ],
+                        '${provider.pets.length} pet${provider.pets.length == 1 ? '' : 's'} · ${user?.email ?? ''}',
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Material(
-                  color: Colors.white,
-                  borderRadius: AppRadius.brPill,
-                  child: InkWell(
-                    borderRadius: AppRadius.brPill,
-                    onTap: () => Navigator.push(
-                      context,
-                      AppRoutes.sharedAxis(const BuyScansScreen()),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: 12,
-                      ),
-                      child: Text(
-                        'Buy scans',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: AppColors.primaryDark,
-                        ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            _PlanCard(user: user),
+            const SizedBox(height: AppSpacing.md),
+
+            const ReferralCard(),
+            const SizedBox(height: AppSpacing.md),
+
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceElevated,
+                borderRadius: AppRadius.brLg,
+                boxShadow: AppShadows.card,
+              ),
+              child: Column(
+                children: [
+                  _ProfileRow(
+                    icon: Icons.pets_rounded,
+                    label: 'My pets',
+                    onTap: () => Navigator.push(context, AppRoutes.sharedAxis(const MyPetsScreen())),
+                  ),
+                  const _RowDivider(),
+                  _ProfileRow(
+                    icon: Icons.notifications_rounded,
+                    label: 'Reminders & notifications',
+                    onTap: () async {
+                      await NotificationPrimer.ensure(context);
+                      if (context.mounted) {
+                        Navigator.push(context, AppRoutes.sharedAxis(const RemindersScreen()));
+                      }
+                    },
+                  ),
+                  const _RowDivider(),
+                  _ProfileRow(
+                    icon: Icons.restore_rounded,
+                    label: 'Restore purchases',
+                    onTap: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      if (!provider.iapAvailable) await provider.initIap();
+                      if (!provider.iapAvailable) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Google Play is not available on this device.')),
+                        );
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Checking Google Play for your purchases…')),
+                      );
+                      await provider.restorePurchases(silent: true);
+                      // Give restored purchases a moment to reach the server.
+                      await Future.delayed(const Duration(seconds: 3));
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              provider.isPlus
+                                  ? 'PetCare Plus is active on this account.'
+                                  : 'No active subscription found. Scan packs are already in your balance.',
+                            ),
+                          ),
+                        );
+                    },
+                  ),
+                  const _RowDivider(),
+                  _ProfileRow(
+                    icon: Icons.help_outline_rounded,
+                    label: 'Help & feedback',
+                    onTap: () => launchUrl(
+                      Uri(
+                        scheme: 'mailto',
+                        path: AppConfig.supportEmail,
+                        query: 'subject=PetCareAI feedback (account ${user?.id ?? '-'})',
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.xl),
-
-          GradientCard.plain(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-            child: Column(
-              children: [
-                // _ProfileRow(
-                //   icon: Icons.person_rounded,
-                //   label: 'Account',
-                //   subtitle: 'Manage your account details',
-                //   onTap: () => _notReady(context, 'Account'),
-                // ),
-                // const _RowDivider(),
-                // _ProfileRow(
-                //   icon: Icons.verified_user_rounded,
-                //   label: 'Privacy',
-                //   subtitle: 'Privacy policy and data settings',
-                //   onTap: () => _notReady(context, 'Privacy'),
-                // ),
-                // const _RowDivider(),
-                // _ProfileRow(
-                //   icon: Icons.notifications_rounded,
-                //   label: 'Notifications',
-                //   subtitle: 'Manage your notification preferences',
-                //   onTap: () => _notReady(context, 'Notifications'),
-                // ),
-                // const _RowDivider(),
-                // _ProfileRow(
-                //   icon: Icons.help_outline_rounded,
-                //   label: 'Help & Support',
-                //   subtitle: 'Get help and support',
-                //   onTap: () => _notReady(context, 'Help & Support'),
-                // ),
-                // const _RowDivider(),
-                _ProfileRow(
-                  icon: Icons.info_outline_rounded,
-                  label: 'About',
-                  subtitle: 'App version and information',
-                  onTap: () => _showAbout(context),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.xl),
-
-          Material(
-            color: AppColors.criticalityEmergencyBg,
-            borderRadius: AppRadius.brLg,
-            child: InkWell(
-              borderRadius: AppRadius.brLg,
-              onTap: () => _handleLogout(context),
-              child: SizedBox(
-                height: 60,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.logout_rounded,
-                      color: AppColors.criticalityEmergency,
+                  const _RowDivider(),
+                  _ProfileRow(
+                    icon: Icons.verified_user_rounded,
+                    label: 'Privacy policy',
+                    onTap: () => launchUrl(
+                      Uri.parse(AppConfig.privacyPolicyUrl),
+                      mode: LaunchMode.externalApplication,
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      'Log out',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: AppColors.criticalityEmergency,
+                  ),
+                  const _RowDivider(),
+                  _ProfileRow(
+                    icon: Icons.info_outline_rounded,
+                    label: 'About',
+                    onTap: () => _showAbout(context),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            Material(
+              color: AppColors.criticalityEmergencyBg,
+              borderRadius: AppRadius.brMd,
+              child: InkWell(
+                borderRadius: AppRadius.brMd,
+                onTap: () => _handleLogout(context),
+                child: SizedBox(
+                  height: 52,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.logout_rounded, color: AppColors.criticalityEmergency),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text(
+                        'Log out',
+                        style: theme.textTheme.labelLarge?.copyWith(color: AppColors.criticalityEmergency),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  final UserModel? user;
+
+  const _PlanCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final plan = user?.plan;
+    final isPlus = user?.isPlus ?? false;
+    final white90 = AppColors.alpha(Colors.white, 0.9);
+
+    String title;
+    String subtitle;
+    String? chip;
+    if (isPlus && plan != null) {
+      title = 'PetCare Plus · ${plan.isYearly ? 'Yearly' : 'Weekly'}';
+      final date = plan.expiresAt;
+      final dateText = date == null ? '' : '${date.day}/${date.month}/${date.year}';
+      if (plan.isTrial && date != null) {
+        final daysLeft = date.difference(DateTime.now()).inDays;
+        chip = 'Free trial · ${daysLeft < 1 ? 'ends today' : '$daysLeft days left'}';
+        subtitle = 'Your plan starts on $dateText. Unlimited scans and AI Vet chat.';
+      } else {
+        subtitle = plan.autoRenewing
+            ? 'Renews on $dateText. Unlimited scans and AI Vet chat.'
+            : 'Ends on $dateText. Renew anytime in Google Play.';
+      }
+    } else {
+      final scans = user?.remainingScans ?? 0;
+      title = '$scans scan${scans == 1 ? '' : 's'} left';
+      subtitle = 'Free plan · ${user?.freeWeeklyScans ?? 1} free scan every Monday · '
+          '${user?.chatDailyLimit ?? 5} AI Vet messages a day';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: AppColors.gradientHero,
+        borderRadius: AppRadius.brLg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('YOUR PLAN', style: theme.textTheme.labelSmall?.copyWith(color: white90)),
+              const Spacer(),
+              if (chip != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.alpha(Colors.white, 0.18),
+                    borderRadius: AppRadius.brPill,
+                  ),
+                  child: Text(chip, style: theme.textTheme.labelMedium?.copyWith(color: Colors.white)),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(title, style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: theme.textTheme.bodyMedium?.copyWith(color: white90)),
+          const SizedBox(height: AppSpacing.md),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.primaryDark,
+              shape: RoundedRectangleBorder(borderRadius: AppRadius.brPill),
+            ),
+            onPressed: () {
+              if (isPlus) {
+                launchUrl(
+                  Uri.parse(AppConfig.manageSubscriptionUrl(plan?.productId ?? IapService.plans.first.productId)),
+                  mode: LaunchMode.externalApplication,
+                );
+              } else {
+                PaywallScreen.open(context, source: 'profile_plan');
+              }
+            },
+            child: Text(isPlus ? 'Manage in Google Play' : 'Get more scans or Plus'),
           ),
         ],
       ),
@@ -325,13 +354,11 @@ class _RowDivider extends StatelessWidget {
 class _ProfileRow extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String subtitle;
   final VoidCallback onTap;
 
   const _ProfileRow({
     required this.icon,
     required this.label,
-    required this.subtitle,
     required this.onTap,
   });
 
@@ -346,30 +373,21 @@ class _ProfileRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
-            vertical: 14,
+            vertical: 13,
           ),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
                   color: AppColors.primaryLight,
-                  shape: BoxShape.circle,
+                  borderRadius: AppRadius.brSm,
                 ),
-                child: Icon(icon, size: 20, color: AppColors.primaryDark),
+                child: Icon(icon, size: 18, color: AppColors.primaryDark),
               ),
               const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: theme.textTheme.bodyMedium),
-                  ],
-                ),
-              ),
+              Expanded(child: Text(label, style: theme.textTheme.titleMedium)),
               const Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.textLight,

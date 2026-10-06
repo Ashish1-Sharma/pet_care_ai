@@ -11,10 +11,6 @@
 -keep class com.android.billingclient.** { *; }
 -dontwarn com.android.billingclient.**
 
-# Razorpay
--keep class com.razorpay.** { *; }
--dontwarn com.razorpay.**
-
 # Keep model classes used for JSON serialisation (Gson / Moshi / kotlinx)
 -keepattributes Signature
 -keepattributes *Annotation*

@@ -18,6 +18,15 @@ class HistoryItem {
   final String visitWithin;
   final String disclaimer;
 
+  /// Saved pet this scan belongs to, if one was chosen.
+  final String? petId;
+
+  /// Id of the first scan in a recovery series (null for a first scan).
+  final String? recoveryOf;
+
+  /// The owner's thumbs up/down on the report, if given.
+  final bool? accurate;
+
   HistoryItem({
     required this.id,
     required this.createdAt,
@@ -33,7 +42,15 @@ class HistoryItem {
     required this.needVet,
     required this.visitWithin,
     required this.disclaimer,
+    this.petId,
+    this.recoveryOf,
+    this.accurate,
   });
+
+  /// Id of the series this scan belongs to (itself when it started one).
+  String get seriesId => recoveryOf ?? id;
+
+  DateTime? get createdAtDate => DateTime.tryParse(createdAt)?.toLocal();
 
   factory HistoryItem.fromJson(Map<String, dynamic> json) {
     final aiResponseJson = json['aiResponse'] as Map<String, dynamic>? ?? {};
@@ -54,6 +71,9 @@ class HistoryItem {
       needVet: aiResponse.needVet,
       visitWithin: aiResponse.visitWithin,
       disclaimer: aiResponse.disclaimer,
+      petId: json['petId']?.toString(),
+      recoveryOf: json['recoveryOf']?.toString(),
+      accurate: json['feedback'] is Map ? json['feedback']['accurate'] as bool? : null,
     );
   }
 
@@ -73,6 +93,8 @@ class HistoryItem {
       'needVet': needVet,
       'visitWithin': visitWithin,
       'disclaimer': disclaimer,
+      'petId': petId,
+      'recoveryOf': recoveryOf,
     };
   }
 

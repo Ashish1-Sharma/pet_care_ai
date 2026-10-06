@@ -8,6 +8,7 @@ import '../../config/app_routes.dart';
 import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_spacing.dart';
 import '../../providers/app_provider.dart';
+import '../../services/notification_service.dart';
 import '../../services/storage_service.dart';
 import '../../widgets/animated_marks.dart';
 import '../../widgets/mint_backdrop.dart';
@@ -42,6 +43,8 @@ class _SplashScreenState extends State<SplashScreen> {
         await provider.checkAuthStatus();
         return seenOnboarding;
       }),
+      // Reads the notification (if any) that launched the app.
+      NotificationService.instance.init(),
       Future.delayed(AppDurations.splashFloor),
     ]);
 
@@ -101,14 +104,14 @@ class _SplashScreenState extends State<SplashScreen> {
 
                 const SizedBox(height: AppSpacing.lg),
 
-                // Two-tone wordmark: dark "Pet", brand-green "Scan AI".
+                // Two-tone wordmark: dark "PetCare", brand-green "AI".
                 Text.rich(
                       TextSpan(
                         style: theme.textTheme.displayMedium,
                         children: [
-                          const TextSpan(text: 'Pet '),
+                          const TextSpan(text: 'PetCare'),
                           TextSpan(
-                            text: 'Scan AI',
+                            text: 'AI',
                             style: TextStyle(color: AppColors.primaryDark),
                           ),
                         ],

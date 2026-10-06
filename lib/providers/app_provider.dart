@@ -2,13 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_review/in_app_review.dart';
 import '../models/user_model.dart';
 import '../models/ai_response_model.dart';
 import '../models/history_model.dart';
-import '../models/payment_model.dart';
+import '../models/pet_profile.dart';
+import '../models/reminder.dart';
+import '../services/analytics_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../services/pet_service.dart';
 import '../services/payment_service.dart';
 import '../services/iap_service.dart';
@@ -20,6 +24,7 @@ class AppProvider with ChangeNotifier {
   final PetService _petService;
   final PaymentService _paymentService;
   final IapService _iapService;
+  final NotificationService _notifications = NotificationService.instance;
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   final StreamController<IapEvent> _iapEventController =
@@ -29,6 +34,7 @@ class AppProvider with ChangeNotifier {
   bool _iapProductsLoading = false;
   String? _iapProductsError;
   List<ProductDetails> _iapProducts = [];
+  List<PlusOffer> _plusOffers = [];
   String? _purchasingProductId;
 
   UserModel? _currentUser;
@@ -36,8 +42,12 @@ class AppProvider with ChangeNotifier {
   List<HistoryItem> _historyList = [];
   bool _isLoading = false;
   String? _errorMessage;
+  String? _errorCode;
   bool _isDemoMode = false;
-  
+
+  String? _selectedPetId;
+  List<Reminder> _reminders = [];
+
   // Progress tracking during scan
   String _scanProgressMessage = '';
 
@@ -50,6 +60,10 @@ class AppProvider with ChangeNotifier {
         _iapService = IapService() {
     // Inject the logout callback to handle 401 expiration
     _apiService.onUnauthorized = logout;
+    AnalyticsService.instance.attach(
+      _apiService,
+      canSend: () => isAuthenticated && !_isDemoMode,
+    );
   }
 
   // Getters
@@ -59,14 +73,34 @@ class AppProvider with ChangeNotifier {
   List<HistoryItem> get historyList => _historyList;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// Machine-readable reason for the last failure (e.g. `NO_SCANS`).
+  String? get errorCode => _errorCode;
   String get scanProgressMessage => _scanProgressMessage;
   bool get isDemoMode => _isDemoMode;
+  bool get isPlus => _currentUser?.isPlus ?? false;
+
+  List<PetProfile> get pets => _currentUser?.pets ?? const [];
+  PetProfile? get selectedPet {
+    if (pets.isEmpty) return null;
+    return pets.firstWhere(
+      (p) => p.id == _selectedPetId,
+      orElse: () => pets.first,
+    );
+  }
+
+  List<Reminder> get reminders =>
+      [..._reminders]..sort((a, b) => a.dueAt.compareTo(b.dueAt));
 
   // In-app purchase getters
   bool get iapAvailable => _iapAvailable;
   bool get iapProductsLoading => _iapProductsLoading;
   String? get iapProductsError => _iapProductsError;
-  List<ProductDetails> get iapProducts => _iapProducts;
+  List<ProductDetails> get packProducts => IapService.packs
+      .map((pack) => _iapProducts.where((p) => p.id == pack.productId).firstOrNull)
+      .whereType<ProductDetails>()
+      .toList();
+  List<PlusOffer> get plusOffers => _plusOffers;
   String? get purchasingProductId => _purchasingProductId;
   bool get isPurchasing => _purchasingProductId != null;
 
@@ -77,6 +111,18 @@ class AppProvider with ChangeNotifier {
   // Clear errors helper
   void clearError() {
     _errorMessage = null;
+    _errorCode = null;
+    notifyListeners();
+  }
+
+  void _setError(Object e) {
+    _errorMessage = e.toString();
+    _errorCode = e is ApiException ? e.code : null;
+  }
+
+  Future<void> _setUser(UserModel user) async {
+    _currentUser = user;
+    await _storageService.saveUser(user);
     notifyListeners();
   }
 
@@ -89,13 +135,15 @@ class AppProvider with ChangeNotifier {
     try {
       final savedToken = await _storageService.getToken();
       final savedUser = await _storageService.getUser();
+      _selectedPetId = await _storageService.getSelectedPetId();
+      _reminders = await _storageService.getReminders();
 
       if (savedToken != null && savedUser != null) {
         _token = savedToken;
         _currentUser = savedUser;
         _isDemoMode = (savedToken == "demo_jwt_token");
         notifyListeners();
-        
+
         // Fetch fresh profile in the background only if not in demo mode
         if (!_isDemoMode) {
           await refreshProfile().catchError((_) => null);
@@ -103,6 +151,7 @@ class AppProvider with ChangeNotifier {
           // Re-populate mock items
           _populateDemoHistory();
         }
+        track('app_open');
       }
     } catch (e) {
       _errorMessage = e.toString();
@@ -152,7 +201,6 @@ class AppProvider with ChangeNotifier {
 
   // 2. Google Login
   Future<bool> loginWithGoogle() async {
-    print('DEBUG: AppProvider.loginWithGoogle() triggered.');
     _isLoading = true;
     _errorMessage = null;
     _isDemoMode = false;
@@ -161,30 +209,47 @@ class AppProvider with ChangeNotifier {
     try {
       final credentials = await _authService.loginWithGoogle();
       if (credentials == null) {
-        print('DEBUG: AppProvider.loginWithGoogle() - User cancelled login.');
         return false;
       }
 
       _token = credentials['token'];
       _currentUser = credentials['user'];
 
-      print('DEBUG: AppProvider.loginWithGoogle() - Saving token and user to local storage...');
       await _storageService.saveToken(_token!);
       await _storageService.saveUser(_currentUser!);
 
-      print('DEBUG: AppProvider.loginWithGoogle() - Sign-in process completed successfully.');
+      track(credentials['isNewUser'] == true ? 'signup' : 'login');
+      await _uploadPendingPet();
+
+      // A purchase made on a previous install, or before signing in, can now
+      // be linked to this account.
+      unawaited(_purchaseSub == null ? initIap() : restorePurchases(silent: true));
+
       notifyListeners();
       return true;
-    } catch (e, stackTrace) {
-      print('DEBUG: AppProvider.loginWithGoogle() - ERROR caught during sign-in:');
-      print('DEBUG: Error details: $e');
-      print('DEBUG: Stacktrace:\n$stackTrace');
-      _errorMessage = e.toString();
+    } catch (e) {
+      debugPrint('AppProvider.loginWithGoogle failed: $e');
+      _setError(e);
       notifyListeners();
       return false;
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// The pet entered during onboarding is saved to the account once signed in.
+  Future<void> _uploadPendingPet() async {
+    final pending = await _storageService.getPendingPet();
+    if (pending == null) return;
+    final alreadySaved = pets.any(
+      (p) => p.name.toLowerCase() == pending.name.toLowerCase() && p.type == pending.type,
+    );
+    try {
+      if (!alreadySaved) await addPet(pending);
+      await _storageService.clearPendingPet();
+    } catch (e) {
+      debugPrint('Pending pet upload failed, will retry on next login: $e');
     }
   }
 
@@ -203,8 +268,11 @@ class AppProvider with ChangeNotifier {
         email: "demo@example.com",
         profileImage: "",
         remainingScans: 5,
+        pets: const [
+          PetProfile(id: 'demo_pet', name: 'Buddy', type: 'Dog', breed: 'Golden Retriever', age: '3 years'),
+        ],
       );
-      
+
       _populateDemoHistory();
 
       // Save to local storage
@@ -224,13 +292,17 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      await AnalyticsService.instance.flush();
       if (!_isDemoMode) {
         await _authService.signOut();
       }
       await _storageService.clearAll();
+      await _notifications.cancelAll();
       _token = null;
       _currentUser = null;
       _historyList = [];
+      _reminders = [];
+      _selectedPetId = null;
       _isDemoMode = false;
     } catch (e) {
       _errorMessage = e.toString();
@@ -246,14 +318,53 @@ class AppProvider with ChangeNotifier {
 
     try {
       final freshUser = await _petService.getProfile();
-      _currentUser = freshUser;
-      await _storageService.saveUser(freshUser);
-      notifyListeners();
+      await _setUser(freshUser);
+      await _syncAppNotifications();
     } catch (e) {
       _errorMessage = e.toString();
       notifyListeners();
     }
   }
+
+  /// Keeps the app's own notifications in line with the account: the weekly
+  /// free scan only for free users, the trial heads-up only during a trial.
+  Future<void> _syncAppNotifications() async {
+    final user = _currentUser;
+    if (user == null || _isDemoMode) return;
+    if (!await _storageService.notificationsPrimed()) return;
+
+    if (user.isPlus) {
+      await _notifications.cancel(NotificationService.weeklyFreeScanId);
+    } else {
+      await _notifications.scheduleWeeklyFreeScan();
+    }
+
+    final plan = user.plan;
+    if (user.isPlus && plan != null && plan.isTrial && plan.expiresAt != null) {
+      final offer = _plusOffers.where((o) => o.plan.productId == plan.productId).firstOrNull;
+      await _notifications.scheduleTrialEnding(plan.expiresAt!, offer?.recurringPrice ?? 'the plan price');
+    } else {
+      await _notifications.cancel(NotificationService.trialEndingId);
+    }
+
+    await _notifications.scheduleReengagement(selectedPet?.name ?? '');
+  }
+
+  /// Called after the user agrees to reminders (permission primer).
+  Future<bool> enableNotifications() async {
+    final granted = await _notifications.requestPermission();
+    await _storageService.setNotificationsPrimed();
+    track('notifications_permission', {'granted': granted});
+    if (granted) {
+      await _syncAppNotifications();
+      for (final reminder in _reminders) {
+        await _notifications.scheduleReminder(reminder);
+      }
+    }
+    return granted;
+  }
+
+  Future<bool> notificationsPrimed() => _storageService.notificationsPrimed();
 
   // 5. Lazy-load scan history
   Future<void> fetchHistory() async {
@@ -273,6 +384,16 @@ class AppProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// All scans in a recovery series, oldest first.
+  List<HistoryItem> recoverySeries(String seriesId) {
+    final items = _historyList.where((h) => h.seriesId == seriesId).toList();
+    items.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return items;
+  }
+
+  HistoryItem? historyItem(String id) =>
+      _historyList.where((h) => h.id == id).firstOrNull;
 
   // 6. Delete history item
   Future<bool> deleteHistoryItem(String id) async {
@@ -301,17 +422,21 @@ class AppProvider with ChangeNotifier {
     required String description,
     required List<String> symptoms,
     required List<String> imagePaths,
+    String? petId,
+    String? recoveryOf,
   }) async {
     _isLoading = true;
     _errorMessage = null;
+    _errorCode = null;
     _scanProgressMessage = 'Uploading Images...';
     notifyListeners();
+    track('scan_start', {'bodyPart': bodyPart, 'followUp': recoveryOf != null});
 
     try {
       if (_isDemoMode) {
         // Step 1: Simulated uploads/processing delays for realistic user flow
         await Future.delayed(const Duration(milliseconds: 1200));
-        
+
         _scanProgressMessage = 'Analyzing Images...';
         notifyListeners();
         await Future.delayed(const Duration(milliseconds: 1000));
@@ -320,9 +445,12 @@ class AppProvider with ChangeNotifier {
         notifyListeners();
         await Future.delayed(const Duration(milliseconds: 1200));
 
+        final demoId = "demo_${DateTime.now().millisecondsSinceEpoch}";
         final dummyResponse = AiResponseModel(
           success: true,
           remainingScans: (_currentUser?.remainingScans ?? 5) - 1,
+          scanId: demoId,
+          recoveryOf: recoveryOf,
           data: AiResponseData(
             possibleCondition: "Contact Dermatitis (Demo)",
             criticality: "Low",
@@ -347,7 +475,7 @@ class AppProvider with ChangeNotifier {
 
         // Add to local history list dynamically so the history tab updates instantly
         final newHistory = HistoryItem(
-          id: "demo_${DateTime.now().millisecondsSinceEpoch}",
+          id: demoId,
           createdAt: DateTime.now().toIso8601String(),
           imageUrls: imagePaths,
           criticality: "Low",
@@ -369,7 +497,9 @@ class AppProvider with ChangeNotifier {
           ],
           needVet: false,
           visitWithin: "Not urgent. Consult a vet if irritation doesn't clear in 48 hours.",
-          disclaimer: "Demo Assessment: This report is a simulated response created for review purposes."
+          disclaimer: "Demo Assessment: This report is a simulated response created for review purposes.",
+          petId: petId,
+          recoveryOf: recoveryOf,
         );
 
         _historyList.insert(0, newHistory);
@@ -386,7 +516,7 @@ class AppProvider with ChangeNotifier {
 
       // Step 1: Real standard scan flow
       await Future.delayed(const Duration(milliseconds: 1200));
-      
+
       _scanProgressMessage = 'Analyzing Images...';
       notifyListeners();
       await Future.delayed(const Duration(milliseconds: 1000));
@@ -400,22 +530,36 @@ class AppProvider with ChangeNotifier {
         description: description,
         symptoms: symptoms,
         imagePaths: imagePaths,
+        petId: petId,
+        recoveryOf: recoveryOf,
       );
 
-      // Deduct one scan locally first and sync fresh profile from server in background
+      // The server reports the true balance after the scan.
       if (_currentUser != null) {
-        final currentScans = _currentUser!.remainingScans;
-        _currentUser = _currentUser!.copyWith(remainingScans: currentScans > 0 ? currentScans - 1 : 0);
+        _currentUser = _currentUser!.copyWith(
+          remainingScans: response.remainingScans,
+          isPlus: response.isPlus,
+        );
         await _storageService.saveUser(_currentUser!);
       }
+      track('scan_done', {
+        'criticality': response.data?.criticality,
+        'followUp': recoveryOf != null,
+        'plus': response.isPlus,
+      });
 
-      // Fetch fresh profile in the background to ensure it is in sync with server
-      refreshProfile().catchError((_) => null);
+      // Keep history in step so recovery series include the new scan.
+      unawaited(fetchHistory());
 
       await Future.delayed(const Duration(milliseconds: 800));
       return response;
     } catch (e) {
-      _errorMessage = e.toString();
+      _setError(e);
+      if (_errorCode == 'NO_SCANS') {
+        // The server knows best; resync so the UI shows the paywall state.
+        unawaited(refreshProfile());
+      }
+      track('scan_failed', {'code': _errorCode});
       return null;
     } finally {
       _isLoading = false;
@@ -424,83 +568,173 @@ class AppProvider with ChangeNotifier {
     }
   }
 
-  // 8. Razorpay Order Generation
-  Future<RazorpayOrder?> createOrder(double amount, int scansPurchased) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
+  Future<void> sendScanFeedback(String scanId, {required bool accurate}) async {
+    track('scan_feedback', {'accurate': accurate});
+    if (_isDemoMode) return;
     try {
-      if (_isDemoMode) {
-        return RazorpayOrder(
-          orderId: "demo_order_${DateTime.now().millisecondsSinceEpoch}",
-          amount: (amount * 100).toInt(),
-          currency: "INR",
-          key: "demo_key_id",
-        );
-      }
-
-      final order = await _paymentService.createOrder(
-        amount: amount,
-        scansPurchased: scansPurchased,
-      );
-      return order;
+      await _petService.sendScanFeedback(scanId, accurate: accurate);
     } catch (e) {
-      _errorMessage = e.toString();
-      return null;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+      debugPrint('Feedback failed: $e');
     }
   }
 
-  // 9. Payment verification
-  Future<bool> verifyPayment({
-    required String orderId,
-    required String paymentId,
-    required String signature,
-    required int scansPurchased,
-    required double amount,
-  }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
+  /// Asks Google Play to show its rating card, at most once every 60 days.
+  /// Play decides whether it actually appears. Never gated on sentiment.
+  Future<void> maybeRequestReview() async {
+    if (_isDemoMode) return;
+    final last = await _storageService.getLastReviewPrompt();
+    if (last != null && DateTime.now().difference(last).inDays < 60) return;
     try {
-      if (_isDemoMode) {
-        if (_currentUser != null) {
-          final currentScans = _currentUser!.remainingScans;
-          _currentUser = _currentUser!.copyWith(remainingScans: currentScans + scansPurchased);
-          await _storageService.saveUser(_currentUser!);
-        }
-        notifyListeners();
-        return true;
+      final review = InAppReview.instance;
+      if (await review.isAvailable()) {
+        await _storageService.setLastReviewPrompt(DateTime.now());
+        track('review_prompt');
+        await review.requestReview();
       }
-
-      final success = await _paymentService.verifyPayment(
-        orderId: orderId,
-        paymentId: paymentId,
-        signature: signature,
-        scansPurchased: scansPurchased,
-        amount: amount,
-      );
-
-      if (success) {
-        // Fetch fresh profile to sync scanning balance
-        await refreshProfile();
-      }
-      return success;
     } catch (e) {
-      _errorMessage = e.toString();
-      return false;
-    } finally {
-      _isLoading = false;
+      debugPrint('Review prompt failed: $e');
+    }
+  }
+
+  /// Chat responses carry the remaining free messages; keep the badge in sync.
+  void updateChatRemaining(int? remaining) {
+    final user = _currentUser;
+    if (user == null || remaining == null) return;
+    _currentUser = user.copyWith(chatRemainingToday: remaining);
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pets
+  // ---------------------------------------------------------------------------
+
+  Future<void> selectPet(String? petId) async {
+    _selectedPetId = petId;
+    await _storageService.setSelectedPetId(petId);
+    notifyListeners();
+  }
+
+  Future<PetProfile> addPet(PetProfile pet) async {
+    final saved = _isDemoMode
+        ? PetProfile(
+            id: 'demo_${DateTime.now().millisecondsSinceEpoch}',
+            name: pet.name,
+            type: pet.type,
+            breed: pet.breed,
+            age: pet.age,
+            weight: pet.weight,
+          )
+        : await _petService.createPet(pet);
+    if (_currentUser != null) {
+      await _setUser(_currentUser!.copyWith(pets: [...pets, saved]));
+    }
+    await selectPet(saved.id);
+    track('pet_added', {'type': saved.type});
+    return saved;
+  }
+
+  Future<void> updatePet(PetProfile pet) async {
+    final saved = _isDemoMode ? pet : await _petService.updatePet(pet);
+    if (_currentUser != null) {
+      await _setUser(_currentUser!.copyWith(
+        pets: pets.map((p) => p.id == saved.id ? saved : p).toList(),
+      ));
+    }
+  }
+
+  Future<void> deletePet(String petId) async {
+    if (!_isDemoMode) await _petService.deletePet(petId);
+    if (_currentUser != null) {
+      await _setUser(_currentUser!.copyWith(
+        pets: pets.where((p) => p.id != petId).toList(),
+      ));
+    }
+    if (_selectedPetId == petId) await selectPet(null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Referrals
+  // ---------------------------------------------------------------------------
+
+  Future<bool> redeemReferral(String code) async {
+    _errorMessage = null;
+    try {
+      final user = await _petService.redeemReferral(code);
+      await _setUser(user);
+      track('referral_redeemed');
+      return true;
+    } catch (e) {
+      _setError(e);
       notifyListeners();
+      return false;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // 10. Google Play in-app purchases (consumable scan packs)
+  // Care reminders (device-local, delivered as notifications)
+  // ---------------------------------------------------------------------------
+
+  Future<Reminder> addReminder({
+    required String title,
+    required DateTime dueAt,
+    PetProfile? pet,
+    ReminderRepeat repeat = ReminderRepeat.none,
+    String? recoveryScanId,
+  }) async {
+    final reminder = Reminder(
+      id: await _storageService.nextReminderId(),
+      title: title,
+      petId: pet?.id,
+      petName: pet?.name ?? 'your pet',
+      dueAt: dueAt,
+      repeat: repeat,
+      recoveryScanId: recoveryScanId,
+    );
+    // One pending check-in per recovery series.
+    if (recoveryScanId != null) {
+      for (final old in _reminders.where((r) => r.recoveryScanId == recoveryScanId).toList()) {
+        await _notifications.cancel(old.id);
+        _reminders.remove(old);
+      }
+    }
+    _reminders.add(reminder);
+    await _storageService.saveReminders(_reminders);
+    await _notifications.scheduleReminder(reminder);
+    track('reminder_added', {'recovery': recoveryScanId != null, 'repeat': repeat.name});
+    notifyListeners();
+    return reminder;
+  }
+
+  /// Marks a reminder done: repeating ones roll to their next date.
+  Future<void> completeReminder(Reminder reminder) async {
+    await _notifications.cancel(reminder.id);
+    _reminders.removeWhere((r) => r.id == reminder.id);
+    if (reminder.repeat != ReminderRepeat.none) {
+      var next = reminder.repeat.next(reminder.dueAt);
+      while (!next.isAfter(DateTime.now())) {
+        next = reminder.repeat.next(next);
+      }
+      final rolled = reminder.copyWith(dueAt: next);
+      _reminders.add(rolled);
+      await _notifications.scheduleReminder(rolled);
+    }
+    await _storageService.saveReminders(_reminders);
+    notifyListeners();
+  }
+
+  Future<void> deleteReminder(Reminder reminder) async {
+    await _notifications.cancel(reminder.id);
+    _reminders.removeWhere((r) => r.id == reminder.id);
+    await _storageService.saveReminders(_reminders);
+    notifyListeners();
+  }
+
+  /// The pending recovery check-in for a series, if any.
+  Reminder? recoveryReminderFor(String seriesId) =>
+      _reminders.where((r) => r.recoveryScanId == seriesId).firstOrNull;
+
+  // ---------------------------------------------------------------------------
+  // 10. Google Play in-app purchases: scan packs + PetCare Plus
   // ---------------------------------------------------------------------------
 
   /// Connects to the store and starts listening for purchase updates.
@@ -537,6 +771,8 @@ class AppProvider with ChangeNotifier {
       await loadIapProducts();
       // Retry any purchase that was paid for but never credited.
       await retryPendingRedemptions();
+      // Re-sync subscriptions (renewals, a reinstall, another device).
+      if (isAuthenticated) await restorePurchases(silent: true);
     }
   }
 
@@ -554,13 +790,10 @@ class AppProvider with ChangeNotifier {
       if (response.error != null) {
         _iapProductsError = response.error!.message;
         _iapProducts = [];
+        _plusOffers = [];
       } else {
-        // Keep the catalogue order from IapService rather than Play's ordering.
-        final byId = {for (final p in response.productDetails) p.id: p};
-        _iapProducts = IapService.packs
-            .map((pack) => byId[pack.productId])
-            .whereType<ProductDetails>()
-            .toList();
+        _iapProducts = response.productDetails;
+        _plusOffers = IapService.plusOffers(_iapProducts);
 
         if (_iapProducts.isEmpty) {
           _iapProductsError =
@@ -573,6 +806,7 @@ class AppProvider with ChangeNotifier {
     } catch (e) {
       _iapProductsError = e.toString();
       _iapProducts = [];
+      _plusOffers = [];
     } finally {
       _iapProductsLoading = false;
       notifyListeners();
@@ -588,6 +822,7 @@ class AppProvider with ChangeNotifier {
 
     _purchasingProductId = product.id;
     notifyListeners();
+    track('purchase_start', {'product': product.id});
 
     try {
       final started = await _iapService.buy(product);
@@ -604,6 +839,59 @@ class AppProvider with ChangeNotifier {
       _iapEventController.add(IapEvent.failure(e.toString()));
       notifyListeners();
       return false;
+    }
+  }
+
+  /// Starts a PetCare Plus subscription (with its free trial if eligible).
+  Future<bool> buyPlus(PlusOffer offer) async {
+    if (_isPurchaseBlocked()) return false;
+
+    _purchasingProductId = offer.plan.productId;
+    notifyListeners();
+    track('purchase_start', {'product': offer.plan.productId, 'trial': offer.hasTrial});
+
+    try {
+      final started = await _iapService.buySubscription(offer.product);
+      if (!started) {
+        _purchasingProductId = null;
+        _iapEventController.add(
+          IapEvent.failure('Could not start the purchase. Please try again.'),
+        );
+        notifyListeners();
+      }
+      return started;
+    } catch (e) {
+      _purchasingProductId = null;
+      _iapEventController.add(IapEvent.failure(e.toString()));
+      notifyListeners();
+      return false;
+    }
+  }
+
+  bool _restoringSilently = false;
+
+  /// Asks Play to re-deliver owned subscriptions. [silent] skips toasts, for
+  /// the automatic sync at start-up and after login.
+  Future<void> restorePurchases({bool silent = false}) async {
+    if (_isDemoMode || !_iapAvailable || !isAuthenticated) {
+      if (!silent) {
+        _iapEventController.add(IapEvent.failure('The Play Store is not available right now.'));
+      }
+      return;
+    }
+    _restoringSilently = silent;
+    try {
+      await _iapService.restorePurchases();
+      if (!silent) {
+        // Give restored events a moment to arrive, then report the outcome.
+        await Future.delayed(const Duration(seconds: 3));
+        _iapEventController.add(IapEvent.restored(isPlus));
+      }
+    } catch (e) {
+      if (!silent) _iapEventController.add(IapEvent.failure(e.toString()));
+    } finally {
+      // Late restored events after this point are treated as silent too.
+      Future.delayed(const Duration(seconds: 5), () => _restoringSilently = false);
     }
   }
 
@@ -637,11 +925,19 @@ class AppProvider with ChangeNotifier {
 
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          await _deliverPurchase(purchase);
+          if (IapService.isSubscription(purchase.productID)) {
+            await _deliverSubscription(
+              purchase,
+              userInitiated: _purchasingProductId == purchase.productID,
+            );
+          } else {
+            await _deliverPurchase(purchase);
+          }
           break;
 
         case PurchaseStatus.error:
           _purchasingProductId = null;
+          track('purchase_failed', {'product': purchase.productID});
           _iapEventController.add(
             IapEvent.failure(
               purchase.error?.message ?? 'The purchase could not be completed.',
@@ -657,6 +953,7 @@ class AppProvider with ChangeNotifier {
 
         case PurchaseStatus.canceled:
           _purchasingProductId = null;
+          track('purchase_canceled', {'product': purchase.productID});
           _iapEventController.add(IapEvent.canceled());
           if (purchase.pendingCompletePurchase) {
             await _iapService.complete(purchase);
@@ -664,6 +961,51 @@ class AppProvider with ChangeNotifier {
           notifyListeners();
           break;
       }
+    }
+  }
+
+  /// Verifies a subscription on the backend, then acknowledges it with Play.
+  /// If verification fails the purchase is left unacknowledged: Play replays
+  /// it on the next start, and refunds it automatically if it never succeeds.
+  Future<void> _deliverSubscription(
+    PurchaseDetails purchase, {
+    required bool userInitiated,
+  }) async {
+    final token = purchase.verificationData.serverVerificationData;
+    if (token.isEmpty || !isAuthenticated) {
+      if (userInitiated) _purchasingProductId = null;
+      notifyListeners();
+      return;
+    }
+
+    final wasPlus = isPlus;
+    try {
+      final user = await _paymentService.verifySubscription(
+        productId: purchase.productID,
+        purchaseToken: token,
+      );
+      await _setUser(user);
+      if (purchase.pendingCompletePurchase) {
+        await _iapService.complete(purchase);
+      }
+      if (userInitiated || (!wasPlus && user.isPlus && !_restoringSilently)) {
+        track('purchase', {'product': purchase.productID, 'type': 'subscription'});
+        _iapEventController.add(IapEvent.subscribed());
+      }
+      await _syncAppNotifications();
+    } catch (e) {
+      if (userInitiated) {
+        _iapEventController.add(
+          IapEvent.failure(
+            'Payment went through but Plus could not be activated yet. '
+            'We will retry automatically. ($e)',
+          ),
+        );
+      }
+      debugPrint('Subscription verification failed: $e');
+    } finally {
+      if (userInitiated) _purchasingProductId = null;
+      notifyListeners();
     }
   }
 
@@ -730,6 +1072,7 @@ class AppProvider with ChangeNotifier {
         // so stay quiet rather than claiming a second purchase succeeded.
         debugPrint('IAP: token already credited, balance synced.');
       } else {
+        track('purchase', {'product': productId, 'type': 'pack'});
         _iapEventController.add(IapEvent.success(result.scansGranted));
       }
       return true;
@@ -766,18 +1109,24 @@ class AppProvider with ChangeNotifier {
 }
 
 /// A one-shot in-app purchase outcome, surfaced to the UI for toasts.
-enum IapEventType { pending, success, failure, canceled }
+enum IapEventType { pending, success, subscribed, restored, failure, canceled }
 
 class IapEvent {
   final IapEventType type;
   final String? message;
   final int scansGranted;
 
-  const IapEvent._(this.type, {this.message, this.scansGranted = 0});
+  /// For [IapEventType.restored]: whether Plus is active afterwards.
+  final bool isPlus;
+
+  const IapEvent._(this.type, {this.message, this.scansGranted = 0, this.isPlus = false});
 
   factory IapEvent.pending() => const IapEvent._(IapEventType.pending);
   factory IapEvent.success(int scans) =>
       IapEvent._(IapEventType.success, scansGranted: scans);
+  factory IapEvent.subscribed() => const IapEvent._(IapEventType.subscribed);
+  factory IapEvent.restored(bool isPlus) =>
+      IapEvent._(IapEventType.restored, isPlus: isPlus);
   factory IapEvent.failure(String message) =>
       IapEvent._(IapEventType.failure, message: message);
   factory IapEvent.canceled() => const IapEvent._(IapEventType.canceled);

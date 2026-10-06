@@ -20,6 +20,9 @@ class HistoryTab extends StatefulWidget {
 }
 
 class _HistoryTabState extends State<HistoryTab> {
+  /// Saved pet to show, or null for all pets.
+  String? _petFilter;
+
   @override
   void initState() {
     super.initState();
@@ -62,13 +65,49 @@ class _HistoryTabState extends State<HistoryTab> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
-    final history = provider.historyList;
+    final pets = provider.pets;
+    final history = _petFilter == null
+        ? provider.historyList
+        : provider.historyList.where((h) => h.petId == _petFilter).toList();
     final theme = Theme.of(context);
+
+    // How many scans each recovery series has, to label ongoing ones.
+    final seriesSizes = <String, int>{};
+    for (final h in provider.historyList) {
+      seriesSizes[h.seriesId] = (seriesSizes[h.seriesId] ?? 0) + 1;
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Scan history', style: theme.textTheme.headlineMedium),
+        title: Text('Health history', style: theme.textTheme.headlineMedium),
         toolbarHeight: 72,
+        bottom: pets.length < 2
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: SizedBox(
+                  height: 48,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter),
+                    children: [
+                      ChoiceChip(
+                        label: const Text('All pets'),
+                        selected: _petFilter == null,
+                        onSelected: (_) => setState(() => _petFilter = null),
+                      ),
+                      for (final pet in pets) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        ChoiceChip(
+                          label: Text(pet.name),
+                          selected: _petFilter == pet.id,
+                          onSelected: (_) => setState(() => _petFilter = pet.id),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
       ),
       body: provider.isLoading && history.isEmpty
           ? const SkeletonList()
@@ -107,6 +146,12 @@ class _HistoryTabState extends State<HistoryTab> {
                         final dateFormatted = Helpers.formatDate(
                           item.createdAt,
                         );
+                        final pet = pets.where((p) => p.id == item.petId).firstOrNull;
+                        final String? status = item.recoveryOf != null
+                            ? 'Follow-up'
+                            : (seriesSizes[item.id] ?? 1) > 1
+                                ? 'Tracking recovery'
+                                : null;
 
                         return Dismissible(
                           key: Key(item.id),
@@ -182,8 +227,11 @@ class _HistoryTabState extends State<HistoryTab> {
                             }
                           },
                           child: _HistoryCard(
-                            title: '${item.petType} • ${item.bodyPart}',
-                            date: dateFormatted,
+                            title: item.possibleConditions.isNotEmpty
+                                ? item.possibleConditions.first.name
+                                : '${item.petType} • ${item.bodyPart}',
+                            date: '${pet?.name ?? item.petType} · ${item.bodyPart} · $dateFormatted',
+                            status: status,
                             criticality: item.criticality,
                             criticalityColor: _getCriticalityColor(
                               item.criticality,
@@ -200,6 +248,10 @@ class _HistoryTabState extends State<HistoryTab> {
                                         0,
                                     // Lazy loaded/passed here only when opening
                                     imageUrls: item.imageUrls,
+                                    scanId: item.id.startsWith('demo') ? null : item.id,
+                                    seriesId: item.seriesId,
+                                    pet: pet,
+                                    isFollowUp: item.recoveryOf != null,
                                   ),
                                 ),
                               );
@@ -218,6 +270,7 @@ class _HistoryTabState extends State<HistoryTab> {
 class _HistoryCard extends StatelessWidget {
   final String title;
   final String date;
+  final String? status;
   final String criticality;
   final Color criticalityColor;
   final Color criticalityBg;
@@ -226,6 +279,7 @@ class _HistoryCard extends StatelessWidget {
   const _HistoryCard({
     required this.title,
     required this.date,
+    this.status,
     required this.criticality,
     required this.criticalityColor,
     required this.criticalityBg,
@@ -284,7 +338,21 @@ class _HistoryCard extends StatelessWidget {
                       style: theme.textTheme.titleLarge,
                     ),
                     const SizedBox(height: 3),
-                    Text(date, style: theme.textTheme.bodySmall),
+                    Text(
+                      date,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (status != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        status!,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

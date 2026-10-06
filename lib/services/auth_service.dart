@@ -53,7 +53,6 @@ class AuthService {
 
       print('DEBUG: Backend server response received. Status code: ${response.statusCode}');
       final responseData = response.data;
-      print('DEBUG: Response data: $responseData');
 
       if (responseData == null || responseData['token'] == null || responseData['user'] == null) {
         print('DEBUG: ERROR - Backend response is missing token or user data.');
@@ -63,7 +62,6 @@ class AuthService {
       final String jwtToken = responseData['token'];
       final UserModel user = UserModel.fromJson(responseData['user']);
       print('DEBUG: Successfully parsed JWT Token and UserModel.');
-      print('DEBUG: JWT Token: $jwtToken');
       print('DEBUG: User details: ${user.name} (${user.email})');
 
       print('DEBUG: Disconnecting Google Sign-in to reset state for subsequent attempts...');
@@ -75,6 +73,7 @@ class AuthService {
       return {
         'token': jwtToken,
         'user': user,
+        'isNewUser': responseData['isNewUser'] == true,
       };
     } catch (e, stackTrace) {
       print('DEBUG: EXCEPTION caught in loginWithGoogle():');

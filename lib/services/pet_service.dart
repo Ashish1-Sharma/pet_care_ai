@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import '../config/api.dart';
+import '../config/app_config.dart';
+import '../models/pet_profile.dart';
 import '../models/user_model.dart';
 import '../models/ai_response_model.dart';
 import '../models/history_model.dart';
@@ -43,6 +45,8 @@ class PetService {
     required String description,
     required List<String> symptoms,
     required List<String> imagePaths,
+    String? petId,
+    String? recoveryOf,
   }) async {
     // Map symptom names to backend slugs (lower_case with underscores)
     final List<String> mappedSymptoms = symptoms.map((s) => Helpers.mapSymptomToSlug(s)).toList();
@@ -54,6 +58,8 @@ class PetService {
       'description': description,
       'symptoms': mappedSymptoms,
       'symptoms[]': mappedSymptoms,
+      if (petId != null) 'petId': petId,
+      if (recoveryOf != null) 'recoveryOf': recoveryOf,
     };
 
     final List<MultipartFile> files = [];
@@ -73,10 +79,13 @@ class PetService {
       'images[]': files,
     });
 
-    // 2. POST multipart request
+    // 2. POST multipart request. Never retried automatically: a timed-out
+    // scan may still complete server-side and spend a credit.
     final response = await _apiService.post(
       ApiEndpoints.analyze,
       data: formData,
+      timeout: const Duration(milliseconds: AppConfig.scanTimeoutMs),
+      retryOnTimeout: false,
     );
 
     // The backend returns `{ scan, aiResponse }` on success — there is no
@@ -86,5 +95,40 @@ class PetService {
     }
 
     return AiResponseModel.fromJson(response.data);
+  }
+
+  /// Thumbs up/down on a report's accuracy.
+  Future<void> sendScanFeedback(String scanId, {required bool accurate}) async {
+    await _apiService.post(
+      ApiEndpoints.scanFeedback(scanId),
+      data: {'accurate': accurate},
+    );
+  }
+
+  // --- Saved pets ------------------------------------------------------------
+
+  Future<PetProfile> createPet(PetProfile pet) async {
+    final response = await _apiService.post(ApiEndpoints.pets, data: pet.toRequest());
+    return PetProfile.fromJson(Map<String, dynamic>.from(response.data));
+  }
+
+  Future<PetProfile> updatePet(PetProfile pet) async {
+    final response = await _apiService.put(ApiEndpoints.pet(pet.id), data: pet.toRequest());
+    return PetProfile.fromJson(Map<String, dynamic>.from(response.data));
+  }
+
+  Future<void> deletePet(String petId) async {
+    await _apiService.delete(ApiEndpoints.pet(petId));
+  }
+
+  // --- Referrals -------------------------------------------------------------
+
+  /// Redeems a friend's invite code. Returns the updated profile.
+  Future<UserModel> redeemReferral(String code) async {
+    final response = await _apiService.post(
+      ApiEndpoints.redeemReferral,
+      data: {'code': code.trim().toUpperCase()},
+    );
+    return UserModel.fromJson(Map<String, dynamic>.from(response.data['user']));
   }
 }

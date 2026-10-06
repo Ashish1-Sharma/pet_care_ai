@@ -4,25 +4,32 @@ import '../../config/app_routes.dart';
 import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_shadows.dart';
 import '../../config/theme/app_spacing.dart';
+import '../../models/pet_profile.dart';
 import '../../providers/app_provider.dart';
 import '../../utils/constants.dart';
 import '../../utils/validators.dart';
 import '../../widgets/image_picker_widget.dart';
 import '../../widgets/loading_dialog.dart';
+import '../../widgets/pet_avatar.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/symptom_chip.dart';
-import '../payment/buy_scans_screen.dart';
+import '../payment/out_of_scans_sheet.dart';
+import '../payment/paywall_screen.dart';
 import '../result/result_screen.dart';
-import 'navigation_container.dart';
 
-class ScanTab extends StatefulWidget {
-  const ScanTab({super.key});
+/// A new AI health scan. Opened for the selected [pet]; with [recoveryOf] it
+/// is a follow-up photo in an existing recovery series.
+class ScanScreen extends StatefulWidget {
+  final PetProfile? pet;
+  final String? recoveryOf;
+
+  const ScanScreen({super.key, this.pet, this.recoveryOf});
 
   @override
-  State<ScanTab> createState() => _ScanTabState();
+  State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanTabState extends State<ScanTab> {
+class _ScanScreenState extends State<ScanScreen> {
   final _descriptionController = TextEditingController();
 
   String? _selectedPetType;
@@ -30,15 +37,38 @@ class _ScanTabState extends State<ScanTab> {
   List<String> _selectedSymptoms = [];
   List<String> _selectedImages = [];
 
+  bool get _isFollowUp => widget.recoveryOf != null;
+
   @override
   void initState() {
     super.initState();
+    final pet = widget.pet;
+    if (pet != null && AppConstants.petTypes.contains(pet.type)) {
+      _selectedPetType = pet.type;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<AppProvider>(context, listen: false);
+
+      // A follow-up repeats the first scan's pet type and body part.
+      if (_isFollowUp) {
+        final first = provider.historyItem(widget.recoveryOf!);
+        if (first != null) {
+          setState(() {
+            if (AppConstants.petTypes.contains(first.petType)) {
+              _selectedPetType = first.petType;
+            }
+            if (AppConstants.bodyParts.contains(first.bodyPart)) {
+              _selectedBodyPart = first.bodyPart;
+            }
+          });
+        }
+      }
+
       if (provider.isDemoMode) {
         setState(() {
-          _selectedPetType = 'Dog';
-          _selectedBodyPart = 'Skin';
+          _selectedPetType ??= 'Dog';
+          _selectedBodyPart ??= 'Skin';
           _selectedSymptoms = ['Itching', 'Redness'];
           _descriptionController.text =
               'The dog has been scratching the neck area frequently and it looks red.';
@@ -52,10 +82,6 @@ class _ScanTabState extends State<ScanTab> {
   void dispose() {
     _descriptionController.dispose();
     super.dispose();
-  }
-
-  void _navigateToPayment() {
-    Navigator.push(context, AppRoutes.sharedAxis(const BuyScansScreen()));
   }
 
   void _warn(String message, {Color? color}) {
@@ -220,18 +246,18 @@ class _ScanTabState extends State<ScanTab> {
   // --- Submit -------------------------------------------------------------
 
   Future<void> _handleAnalyze() async {
-    debugPrint('[ScanTab] Start New Scan tapped');
-    debugPrint('[ScanTab]   petType      = $_selectedPetType');
-    debugPrint('[ScanTab]   bodyPart     = $_selectedBodyPart');
-    debugPrint('[ScanTab]   symptoms     = $_selectedSymptoms');
-    debugPrint(
-      '[ScanTab]   description  = "${_descriptionController.text.trim()}"',
-    );
-    debugPrint('[ScanTab]   images       = $_selectedImages');
+    if (_selectedImages.isEmpty) {
+      _warn('Please add at least one photo of the problem area.');
+      return;
+    }
 
     if (_selectedPetType == null || _selectedBodyPart == null) {
-      debugPrint('[ScanTab] Blocked: pet type or body part missing');
       _warn('Please select both Pet Type and Body Part.');
+      return;
+    }
+
+    if (_selectedSymptoms.isEmpty) {
+      _warn('Please select at least one symptom you have noticed.');
       return;
     }
 
@@ -239,41 +265,18 @@ class _ScanTabState extends State<ScanTab> {
       _descriptionController.text,
     );
     if (descriptionError != null) {
-      debugPrint('[ScanTab] Blocked: $descriptionError');
       _warn(descriptionError);
-      return;
-    }
-
-    if (_selectedImages.isEmpty) {
-      debugPrint('[ScanTab] Blocked: no photos added');
-      _warn('Please add at least one photo of the symptoms');
       return;
     }
 
     final provider = Provider.of<AppProvider>(context, listen: false);
 
-    final balance = provider.currentUser?.remainingScans ?? 0;
-    debugPrint(
-      '[ScanTab] Scan balance = $balance, demoMode = '
-      '${provider.isDemoMode}',
-    );
-    if (balance <= 0) {
-      debugPrint('[ScanTab] Blocked: no scans left');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('No scans left. Top up to keep scanning.'),
-          backgroundColor: AppColors.criticalityHigh,
-          action: SnackBarAction(
-            label: 'BUY NOW',
-            textColor: Colors.white,
-            onPressed: _navigateToPayment,
-          ),
-        ),
-      );
+    // Out of scans: show the options sheet rather than a dead-end error.
+    if (!(provider.currentUser?.canScan ?? false)) {
+      await OutOfScansSheet.show(context, petName: widget.pet?.name);
       return;
     }
 
-    debugPrint('[ScanTab] Validation passed — calling scanPet()');
     LoadingDialog.show(context, imagePath: _selectedImages.first);
 
     final response = await provider.scanPet(
@@ -282,51 +285,31 @@ class _ScanTabState extends State<ScanTab> {
       description: _descriptionController.text,
       symptoms: _selectedSymptoms,
       imagePaths: _selectedImages,
+      petId: widget.pet?.id,
+      recoveryOf: widget.recoveryOf,
     );
 
-    debugPrint(
-      '[ScanTab] scanPet() returned: success=${response?.success}, '
-      'hasData=${response?.data != null}, '
-      'remainingScans=${response?.remainingScans}',
-    );
-
-    if (!mounted) {
-      debugPrint('[ScanTab] Widget unmounted before the response arrived');
-      return;
-    }
+    if (!mounted) return;
     LoadingDialog.hide(context);
 
     if (response != null && response.success && response.data != null) {
-      debugPrint('[ScanTab] Scan succeeded — opening result screen');
-      // Clear fields upon success (restore demo pre-populations in demo mode)
-      setState(() {
-        if (provider.isDemoMode) {
-          _selectedPetType = 'Dog';
-          _selectedBodyPart = 'Skin';
-          _selectedSymptoms = ['Itching', 'Redness'];
-          _selectedImages = ['demo_placeholder.jpg'];
-          _descriptionController.text =
-              'The dog has been scratching the neck area frequently and it looks red.';
-        } else {
-          _selectedPetType = null;
-          _selectedBodyPart = null;
-          _selectedSymptoms = [];
-          _selectedImages = [];
-          _descriptionController.clear();
-        }
-      });
-
-      Navigator.push(
+      Navigator.pushReplacement(
         context,
         AppRoutes.sharedAxis(
           ResultScreen(
             resultData: response.data!,
             remainingScans: response.remainingScans,
+            scanId: response.scanId,
+            seriesId: response.recoveryOf ?? response.scanId,
+            pet: widget.pet,
+            isFollowUp: _isFollowUp,
+            isNewResult: true,
           ),
         ),
       );
+    } else if (provider.errorCode == 'NO_SCANS') {
+      await OutOfScansSheet.show(context, petName: widget.pet?.name);
     } else {
-      debugPrint('[ScanTab] Scan failed: ${provider.errorMessage}');
       _warn(provider.errorMessage ?? 'Analysis failed');
     }
   }
@@ -339,299 +322,184 @@ class _ScanTabState extends State<ScanTab> {
     final user = provider.currentUser;
     final theme = Theme.of(context);
     final description = _descriptionController.text.trim();
+    final pet = widget.pet;
+    final isPlus = user?.isPlus == true;
+
+    final String costLine;
+    if (isPlus) {
+      costLine = 'Included in PetCare Plus';
+    } else {
+      final left = user?.remainingScans ?? 0;
+      costLine = left > 0
+          ? 'Uses 1 scan · ${left - 1} left after this'
+          : 'You have no scans left';
+    }
 
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.gutter,
-            AppSpacing.md,
-            AppSpacing.gutter,
-            kFloatingNavHeight + AppSpacing.lg,
-          ),
-          children: [
-            _GreetingHeader(
-              name: user?.name ?? 'Pet Owner',
-              profileImage: user?.profileImage ?? '',
-              remainingScans: user?.remainingScans ?? 0,
-              onScansTap: _navigateToPayment,
-            ),
-
-            const SizedBox(height: AppSpacing.xl),
-
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.sm),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: AppRadius.brLg,
-                border: Border.all(
-                  color: AppColors.alpha(AppColors.border, 0.7),
+      appBar: AppBar(
+        title: Text(
+          _isFollowUp ? 'Recovery check' : 'New scan',
+          style: theme.textTheme.titleLarge,
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.gutter,
+          AppSpacing.sm,
+          AppSpacing.gutter,
+          AppSpacing.lg,
+        ),
+        children: [
+          if (pet != null) ...[
+            Row(
+              children: [
+                PetAvatar(pet: pet, size: 44),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isFollowUp ? 'Follow-up for ${pet.name}' : 'Scan for ${pet.name}',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                      if (pet.subtitle.isNotEmpty)
+                        Text(pet.subtitle, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
                 ),
-                boxShadow: AppShadows.card,
-              ),
-              child: Column(
-                children: [
-                  // Hero: copy on the left, the pets peeking in on the right.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.sm,
-                      AppSpacing.md,
-                      0,
-                      0,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'New health scan',
-                                style: theme.textTheme.headlineLarge,
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              Text(
-                                'Our AI will analyze and help you understand '
-                                'your pet’s condition.',
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          flex: 4,
-                          child: Image.asset(
-                            'assets/dog_cat.png',
-                            fit: BoxFit.contain,
-                            errorBuilder:
-                                (context, error, stack) =>
-                                    const SizedBox(height: 120),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Steps: each row opens its own picker sheet.
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: AppRadius.brLg,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.sm,
-                    ),
-                    child: Column(
-                      children: [
-                        _StepRow(
-                          step: 1,
-                          icon: Icons.pets_rounded,
-                          title: 'Pet type',
-                          hint: 'Select your pet',
-                          value: _selectedPetType,
-                          onTap: _pickPetType,
-                        ),
-                        const _StepDivider(),
-                        _StepRow(
-                          step: 2,
-                          icon: Icons.my_location_rounded,
-                          title: 'Body part',
-                          hint: 'Choose affected area',
-                          value: _selectedBodyPart,
-                          onTap: _pickBodyPart,
-                        ),
-                        const _StepDivider(),
-                        _StepRow(
-                          step: 3,
-                          icon: Icons.monitor_heart_rounded,
-                          title: 'Symptoms',
-                          hint: 'Select visible symptoms',
-                          value:
-                              _selectedSymptoms.isEmpty
-                                  ? null
-                                  : _selectedSymptoms.join(', '),
-                          onTap: _pickSymptoms,
-                        ),
-                        const _StepDivider(),
-                        _StepRow(
-                          step: 4,
-                          icon: Icons.chat_rounded,
-                          title: 'Describe',
-                          hint: 'Add more details',
-                          value: description.isEmpty ? null : description,
-                          onTap: _editDescription,
-                        ),
-                        const _StepDivider(),
-                        _StepRow(
-                          step: 5,
-                          icon: Icons.photo_camera_rounded,
-                          title: 'Photos',
-                          hint: 'Add clear photos',
-                          value:
-                              _selectedImages.isEmpty
-                                  ? null
-                                  : '${_selectedImages.length} of '
-                                      '${ImagePickerWidget.maxImages} added',
-                          onTap: _pickPhotos,
-                        ),
-
-                        const SizedBox(height: AppSpacing.lg),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                          ),
-                          child: PrimaryButton(
-                            text: 'Start New Scan',
-                            icon: Icons.auto_awesome_rounded,
-                            onPressed: _handleAnalyze,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
+            const SizedBox(height: AppSpacing.md),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Avatar + greeting on the left, scan balance pill on the right.
-class _GreetingHeader extends StatelessWidget {
-  final String name;
-  final String profileImage;
-  final int remainingScans;
-  final VoidCallback onScansTap;
-
-  const _GreetingHeader({
-    required this.name,
-    required this.profileImage,
-    required this.remainingScans,
-    required this.onScansTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // The header greets by first name only, as in the design.
-    final firstName = name.trim().split(' ').first;
-
-    return Row(
-      children: [
-        _Avatar(image: profileImage),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hello,', style: theme.textTheme.bodyMedium),
-              Text(
-                firstName.isEmpty ? 'there' : firstName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.headlineMedium,
+          if (_isFollowUp) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: AppRadius.brMd,
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        _ScanBalancePill(scans: remainingScans, onTap: onScansTap),
-      ],
-    );
-  }
-}
-
-class _ScanBalancePill extends StatelessWidget {
-  final int scans;
-  final VoidCallback onTap;
-
-  const _ScanBalancePill({required this.scans, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: AppColors.surfaceElevated,
-      borderRadius: AppRadius.brMd,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadius.brMd,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 8, AppSpacing.md, 8),
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.brMd,
-            border: Border.all(color: AppColors.primary),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  gradient: AppColors.gradientPrimary,
-                  shape: BoxShape.circle,
+              child: Text(
+                'Take the photo from the same angle and distance as last time, '
+                'so the AI can compare them.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.primaryDark),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: AppRadius.brLg,
+              border: Border.all(color: AppColors.alpha(AppColors.border, 0.7)),
+              boxShadow: AppShadows.card,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Column(
+              children: [
+                _StepRow(
+                  step: 1,
+                  icon: Icons.photo_camera_rounded,
+                  title: 'Photos',
+                  hint: 'Clear, close-up photos of the problem',
+                  value: _selectedImages.isEmpty
+                      ? null
+                      : '${_selectedImages.length} of '
+                          '${ImagePickerWidget.maxImages} added',
+                  onTap: _pickPhotos,
                 ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
-                  size: 18,
+                const _StepDivider(),
+                _StepRow(
+                  step: 2,
+                  icon: Icons.pets_rounded,
+                  title: 'Pet type',
+                  hint: 'Select your pet',
+                  value: _selectedPetType,
+                  onTap: _pickPetType,
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Scans left', style: theme.textTheme.bodySmall),
-                  Text('$scans', style: theme.textTheme.titleLarge),
-                ],
-              ),
-            ],
+                const _StepDivider(),
+                _StepRow(
+                  step: 3,
+                  icon: Icons.my_location_rounded,
+                  title: 'Body part',
+                  hint: 'Where is the problem?',
+                  value: _selectedBodyPart,
+                  onTap: _pickBodyPart,
+                ),
+                const _StepDivider(),
+                _StepRow(
+                  step: 4,
+                  icon: Icons.monitor_heart_rounded,
+                  title: 'Symptoms',
+                  hint: 'What have you noticed?',
+                  value: _selectedSymptoms.isEmpty ? null : _selectedSymptoms.join(', '),
+                  onTap: _pickSymptoms,
+                ),
+                const _StepDivider(),
+                _StepRow(
+                  step: 5,
+                  icon: Icons.chat_rounded,
+                  title: 'Describe (optional)',
+                  hint: 'When it started, what makes it worse…',
+                  value: description.isEmpty ? null : description,
+                  onTap: _editDescription,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          boxShadow: AppShadows.floating,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.gutter,
+              AppSpacing.md,
+              AppSpacing.gutter,
+              AppSpacing.md,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PrimaryButton(
+                  text: 'Analyze with AI',
+                  icon: Icons.auto_awesome_rounded,
+                  onPressed: _handleAnalyze,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                InkWell(
+                  onTap: isPlus
+                      ? null
+                      : () => PaywallScreen.open(context, source: 'scan_cost_line'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text.rich(
+                      TextSpan(
+                        text: costLine,
+                        children: [
+                          if (!isPlus)
+                            const TextSpan(
+                              text: '  ·  Get more',
+                              style: TextStyle(
+                                color: AppColors.primaryDark,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                        ],
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  final String image;
-
-  const _Avatar({required this.image});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2.5),
-      decoration: const BoxDecoration(
-        gradient: AppColors.gradientPrimary,
-        shape: BoxShape.circle,
-      ),
-      child: CircleAvatar(
-        radius: 26,
-        backgroundColor: AppColors.primaryLight,
-        backgroundImage: image.isNotEmpty ? NetworkImage(image) : null,
-        child:
-            image.isEmpty
-                ? const Icon(
-                  Icons.pets_rounded,
-                  color: AppColors.primaryDark,
-                  size: 24,
-                )
-                : null,
       ),
     );
   }

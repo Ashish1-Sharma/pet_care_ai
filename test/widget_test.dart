@@ -6,12 +6,11 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
-    // Verify that the Splash screen title is displayed.
-    expect(find.text('Pet Scan AI'), findsOneWidget);
+    // Verify that the Splash screen wordmark and tagline are displayed.
+    expect(find.text('PetCareAI', findRichText: true), findsOneWidget);
     expect(find.text('Instant AI pet health scanner'), findsOneWidget);
 
-    // Let the splash screen timer and animation finish
+    // Let the splash screen's minimum display timer finish.
     await tester.pump(const Duration(seconds: 3));
-    await tester.pumpAndSettle();
   });
 }

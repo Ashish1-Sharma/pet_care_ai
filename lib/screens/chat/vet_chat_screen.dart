@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/api.dart';
 import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_spacing.dart';
+import '../../providers/app_provider.dart';
+import '../../services/analytics_service.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
+import '../home/navigation_container.dart';
+import '../payment/paywall_screen.dart';
 
 class VetChatScreen extends StatefulWidget {
-  const VetChatScreen({super.key});
+  /// True when shown as the "Ask Vet" tab (no back button).
+  final bool embedded;
+
+  /// Text to pre-fill, e.g. a question about a scan result.
+  final String? initialMessage;
+
+  const VetChatScreen({super.key, this.embedded = false, this.initialMessage});
 
   @override
   State<VetChatScreen> createState() => _VetChatScreenState();
@@ -20,11 +31,23 @@ class _VetChatScreenState extends State<VetChatScreen> {
   bool _isLoading = false;
   bool _historyLoaded = false;
 
+  /// Set when the server refuses a message because today's free ones are used.
+  bool _limitHit = false;
+
   @override
   void initState() {
     super.initState();
     _api = ApiService(StorageService());
+    if (widget.initialMessage != null) {
+      _inputController.text = widget.initialMessage!;
+    }
     _loadHistory();
+  }
+
+  bool _outOfMessages(AppProvider provider) {
+    final user = provider.currentUser;
+    if (user == null || user.isPlus) return false;
+    return _limitHit || (user.chatRemainingToday ?? 1) <= 0;
   }
 
   @override
@@ -56,6 +79,9 @@ class _VetChatScreenState extends State<VetChatScreen> {
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
     if (text.isEmpty || _isLoading) return;
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    if (_outOfMessages(provider)) return;
+    track('chat_message');
 
     _inputController.clear();
     setState(() {
@@ -67,10 +93,28 @@ class _VetChatScreenState extends State<VetChatScreen> {
     try {
       final res = await _api.post(ApiEndpoints.chat, data: {'message': text});
       final reply = res.data['message'] as String? ?? '';
+      provider.updateChatRemaining((res.data['chatRemaining'] as num?)?.toInt());
       setState(() {
         _messages.add(_ChatMessage(role: 'assistant', content: reply));
         _isLoading = false;
       });
+    } on ApiException catch (e) {
+      if (e.code == 'CHAT_LIMIT') {
+        track('chat_limit_hit');
+        provider.updateChatRemaining(0);
+        setState(() {
+          // Put the unsent question back so it is not lost.
+          _messages.removeLast();
+          _inputController.text = text;
+          _limitHit = true;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _messages.add(_ChatMessage(role: 'assistant', content: e.message, isError: true));
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _messages.add(_ChatMessage(
@@ -102,26 +146,39 @@ class _VetChatScreenState extends State<VetChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<AppProvider>();
+    final user = provider.currentUser;
+    final outOfMessages = _outOfMessages(provider);
+    final String? badge = user == null
+        ? null
+        : user.isPlus
+            ? 'Plus'
+            : '${user.chatRemainingToday ?? 0} / ${user.chatDailyLimit ?? 5} left';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _Header(),
+          _Header(showBack: !widget.embedded, badge: badge),
           Expanded(
             child: _historyLoaded
                 ? _MessageList(
                     messages: _messages,
                     isLoading: _isLoading,
                     scrollController: _scrollController,
-                    onScannerTap: () {
-                      Navigator.of(context).pop();
-                    },
+                    onScannerTap: () => openScan(context),
                   )
-                : const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                : const Center(child: CircularProgressIndicator(color: kVetFabColor)),
           ),
+          if (outOfMessages)
+            _LimitCard(
+              dailyLimit: user?.chatDailyLimit ?? 5,
+              onUpgrade: () => PaywallScreen.open(context, source: 'chat_limit'),
+            ),
           _InputBar(
             controller: _inputController,
             isLoading: _isLoading,
+            enabled: !outOfMessages,
             onSend: _sendMessage,
           ),
         ],
@@ -134,6 +191,11 @@ class _VetChatScreenState extends State<VetChatScreen> {
 // Header
 // ──────────────────────────────────────────────
 class _Header extends StatelessWidget {
+  final bool showBack;
+  final String? badge;
+
+  const _Header({required this.showBack, required this.badge});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -152,12 +214,15 @@ class _Header extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Back button
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white, size: 20),
-              ),
+              // Back button (none when shown as a tab)
+              if (showBack)
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white, size: 20),
+                )
+              else
+                const SizedBox(width: AppSpacing.md),
               Container(
                 width: 40,
                 height: 40,
@@ -173,7 +238,7 @@ class _Header extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PawDoc',
+                      'AI Vet',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -181,7 +246,7 @@ class _Header extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'AI Vet Assistant · Powered by AI',
+                      'AI assistant · not a licensed vet',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white.withAlpha(204),
                       ),
@@ -189,34 +254,21 @@ class _Header extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(38),
-                  borderRadius: AppRadius.brPill,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF6EF5B8),
-                        shape: BoxShape.circle,
-                      ),
+              if (badge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(38),
+                    borderRadius: AppRadius.brPill,
+                  ),
+                  child: Text(
+                    badge!,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Online',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -291,7 +343,7 @@ class _WelcomeBubble extends StatelessWidget {
           ),
           AppSpacing.gapMd,
           Text(
-            'Hi! I\'m PawDoc 🐾',
+            'Hi! I\'m your AI Vet',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               color: AppColors.textDark,
@@ -587,12 +639,14 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool isLoading;
+  final bool enabled;
   final VoidCallback onSend;
 
   const _InputBar({
     required this.controller,
     required this.isLoading,
     required this.onSend,
+    this.enabled = true,
   });
 
   @override
@@ -618,6 +672,7 @@ class _InputBar extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                enabled: enabled,
                 minLines: 1,
                 maxLines: 4,
                 textCapitalization: TextCapitalization.sentences,
@@ -626,7 +681,7 @@ class _InputBar extends StatelessWidget {
                   color: AppColors.textDark,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Ask about your pet…',
+                  hintText: enabled ? 'Ask about your pet…' : 'Daily limit reached',
                   hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppColors.textLight,
                   ),
@@ -644,7 +699,7 @@ class _InputBar extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.sm),
             GestureDetector(
-              onTap: isLoading ? null : onSend,
+              onTap: isLoading || !enabled ? null : onSend,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 44,
@@ -685,4 +740,49 @@ class _ChatMessage {
     required this.content,
     this.isError = false,
   });
+}
+
+// ──────────────────────────────────────────────
+// Daily limit reached
+// ──────────────────────────────────────────────
+class _LimitCard extends StatelessWidget {
+  final int dailyLimit;
+  final VoidCallback onUpgrade;
+
+  const _LimitCard({required this.dailyLimit, required this.onUpgrade});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(AppSpacing.gutter, 0, AppSpacing.gutter, AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: AppRadius.brMd,
+        border: Border.all(color: const Color(0xFFE3D8FB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text("You've used today's $dailyLimit free messages", style: theme.textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text(
+            'Keep asking without limits, or come back tomorrow.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: kVetFabColor,
+              minimumSize: const Size.fromHeight(46),
+              shape: RoundedRectangleBorder(borderRadius: AppRadius.brPill),
+            ),
+            onPressed: onUpgrade,
+            child: const Text('Unlimited chat with PetCare Plus'),
+          ),
+        ],
+      ),
+    );
+  }
 }

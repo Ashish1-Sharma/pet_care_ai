@@ -4,6 +4,7 @@ class AppConstants {
     'Cat',
     'Rabbit',
     'Bird',
+    'Hamster',
     'Cow',
     'Horse',
     'Other',
@@ -47,26 +48,4 @@ class AppConstants {
     'Lumps or Bumps',
   ];
 
-  static const List<Map<String, dynamic>> scanPackages = [
-    {
-      'title': 'Starter',
-      'price': 5,
-      'scans': 5,
-    },
-    {
-      'title': 'Popular',
-      'price': 20,
-      'scans': 25,
-    },
-    {
-      'title': 'Premium',
-      'price': 49,
-      'scans': 75,
-    },
-    {
-      'title': 'Unlimited',
-      'price': 99,
-      'scans': 200,
-    },
-  ];
 }

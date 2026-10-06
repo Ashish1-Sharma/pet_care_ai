@@ -120,10 +120,20 @@ class AiResponseModel {
   final int remainingScans;
   final AiResponseData? data;
 
+  /// Server id of the saved scan, used for feedback and recovery follow-ups.
+  final String? scanId;
+
+  /// Id of the first scan in the recovery series this scan belongs to.
+  final String? recoveryOf;
+  final bool isPlus;
+
   AiResponseModel({
     required this.success,
     required this.remainingScans,
     this.data,
+    this.scanId,
+    this.recoveryOf,
+    this.isPlus = false,
   });
 
   factory AiResponseModel.fromJson(Map<String, dynamic> json) {
@@ -135,8 +145,13 @@ class AiResponseModel {
 
     return AiResponseModel(
       success: json['success'] ?? (scan != null),
-      remainingScans: (json['remainingScans'] ?? json['user']?['remainingScans'] ?? 0) as int,
+      remainingScans:
+          ((json['remainingScans'] ?? json['user']?['remainingScans'] ?? 0) as num)
+              .toInt(),
       data: AiResponseData.fromJson(aiResponseJson),
+      scanId: scan?['id']?.toString(),
+      recoveryOf: scan?['recoveryOf']?.toString(),
+      isPlus: json['isPlus'] == true,
     );
   }
 

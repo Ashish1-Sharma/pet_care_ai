@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/pet_profile.dart';
+import '../models/reminder.dart';
 import '../models/user_model.dart';
 
 class StorageService {
@@ -9,6 +11,12 @@ class StorageService {
   static const String _userKey = 'cached_user_profile';
   static const String _onboardingKey = 'has_seen_onboarding';
   static const String _pendingPurchasesKey = 'pending_iap_redemptions';
+  static const String _pendingPetKey = 'onboarding_pending_pet';
+  static const String _selectedPetKey = 'selected_pet_id';
+  static const String _remindersKey = 'care_reminders';
+  static const String _nextReminderIdKey = 'next_reminder_id';
+  static const String _lastReviewPromptKey = 'last_review_prompt_at';
+  static const String _notificationsPrimedKey = 'notifications_primed';
 
   // Securely save JWT
   Future<void> saveToken(String token) async {
@@ -96,11 +104,105 @@ class StorageService {
     await prefs.setString(_pendingPurchasesKey, jsonEncode(pending));
   }
 
+  // --- Onboarding pet ---------------------------------------------------------
+  // The pet entered before sign-in; uploaded to the account right after login.
+
+  Future<void> savePendingPet(PetProfile pet) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingPetKey, jsonEncode(pet.toJson()));
+  }
+
+  Future<PetProfile?> getPendingPet() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonStr = prefs.getString(_pendingPetKey);
+    if (jsonStr == null) return null;
+    try {
+      return PetProfile.fromJson(jsonDecode(jsonStr) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearPendingPet() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingPetKey);
+  }
+
+  Future<String?> getSelectedPetId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_selectedPetKey);
+  }
+
+  Future<void> setSelectedPetId(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_selectedPetKey);
+    } else {
+      await prefs.setString(_selectedPetKey, id);
+    }
+  }
+
+  // --- Care reminders (device-local) -------------------------------------------
+
+  Future<List<Reminder>> getReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonStr = prefs.getString(_remindersKey);
+    if (jsonStr == null) return [];
+    try {
+      return (jsonDecode(jsonStr) as List)
+          .map((e) => Reminder.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveReminders(List<Reminder> reminders) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _remindersKey,
+      jsonEncode(reminders.map((r) => r.toJson()).toList()),
+    );
+  }
+
+  /// Notification ids for reminders start at 1000, clear of the app's own.
+  Future<int> nextReminderId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getInt(_nextReminderIdKey) ?? 1000;
+    await prefs.setInt(_nextReminderIdKey, id + 1);
+    return id;
+  }
+
+  Future<DateTime?> getLastReviewPrompt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_lastReviewPromptKey);
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  Future<void> setLastReviewPrompt(DateTime at) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastReviewPromptKey, at.toIso8601String());
+  }
+
+  /// Whether the "turn on reminders" explainer has been shown.
+  Future<bool> notificationsPrimed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_notificationsPrimedKey) ?? false;
+  }
+
+  Future<void> setNotificationsPrimed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_notificationsPrimedKey, true);
+  }
+
   // Clear all data (Logout)
   // Note: the onboarding flag deliberately survives logout — a returning user
   // signing back in should not be walked through the intro again.
   Future<void> clearAll() async {
     await clearToken();
     await clearUser();
+    await setSelectedPetId(null);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_remindersKey);
   }
 }

@@ -7,6 +7,7 @@ import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_shadows.dart';
 import '../../config/theme/app_spacing.dart';
 import '../../providers/app_provider.dart';
+import '../../services/storage_service.dart';
 import '../../widgets/animated_marks.dart';
 import '../../widgets/google_logo.dart';
 import '../../widgets/mint_backdrop.dart';
@@ -22,6 +23,17 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoggingIn = false;
+
+  /// Name of the pet entered during onboarding, if any.
+  String? _petName;
+
+  @override
+  void initState() {
+    super.initState();
+    StorageService().getPendingPet().then((pet) {
+      if (mounted && pet != null) setState(() => _petName = pet.name);
+    });
+  }
 
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoggingIn = true);
@@ -265,14 +277,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         const SizedBox(height: AppSpacing.lg),
 
-                        // Two-tone wordmark: dark "Pet", brand-green "Scan AI".
+                        // Two-tone wordmark: dark "PetCare", brand-green "AI".
                         Text.rich(
                               TextSpan(
                                 style: theme.textTheme.displayMedium,
                                 children: const [
-                                  TextSpan(text: 'Pet '),
+                                  TextSpan(text: 'PetCare'),
                                   TextSpan(
-                                    text: 'Scan AI',
+                                    text: 'AI',
                                     style: TextStyle(
                                       color: AppColors.primaryDark,
                                     ),
@@ -291,7 +303,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: AppSpacing.sm),
 
                         Text(
-                          'Know what your pet needs.',
+                          _petName == null
+                              ? 'Know what your pet needs.'
+                              : "Save $_petName's health profile",
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: AppColors.textDark,
@@ -301,8 +315,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: AppSpacing.md),
 
                         Text(
-                              'AI-powered symptom scanning, with a report you can '
-                              'take straight to the vet.',
+                              _petName == null
+                                  ? 'AI-powered symptom scanning, with a report you can '
+                                      'take straight to the vet.'
+                                  : 'Sign in so scans, photos and reminders are kept '
+                                      'safe and sync across phones.',
                               textAlign: TextAlign.center,
                               style: theme.textTheme.bodyLarge?.copyWith(
                                 color: AppColors.textMuted,
@@ -349,6 +366,34 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               )
                             else ...[
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                                padding: const EdgeInsets.all(AppSpacing.md),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryLight,
+                                  borderRadius: AppRadius.brMd,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.card_giftcard_rounded,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                    const SizedBox(width: AppSpacing.md),
+                                    Expanded(
+                                      child: Text(
+                                        'Welcome gift: 3 free scans, plus 5 AI Vet '
+                                        'messages a day. No card needed.',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: AppColors.ink,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               _GoogleSignInButton(
                                 onPressed: _handleGoogleSignIn,
                               ),

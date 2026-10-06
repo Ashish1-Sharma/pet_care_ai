@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'config/theme/app_theme.dart';
 import 'providers/app_provider.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/analytics_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,15 +17,31 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  // Send queued analytics before the OS may kill the backgrounded app.
+  late final AppLifecycleListener _lifecycle = AppLifecycleListener(
+    onPause: () => AnalyticsService.instance.flush(),
+  );
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<AppProvider>(
       create: (_) => AppProvider(),
       child: MaterialApp(
-        title: 'Pet Scan AI',
+        title: 'PetCareAI',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         home: const SplashScreen(),

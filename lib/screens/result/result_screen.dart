@@ -1,24 +1,106 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../config/app_routes.dart';
 import '../../config/theme/app_colors.dart';
 import '../../config/theme/app_shadows.dart';
 import '../../config/theme/app_spacing.dart';
 import '../../models/ai_response_model.dart';
+import '../../models/pet_profile.dart';
+import '../../providers/app_provider.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/skeleton_loader.dart';
+import '../chat/vet_chat_screen.dart';
+import '../home/navigation_container.dart';
+import '../recovery/recovery_screen.dart';
+import '../reminders/notification_primer.dart';
 
 class ResultScreen extends StatelessWidget {
   final AiResponseData resultData;
   final int remainingScans;
   final List<String>? imageUrls;
 
+  /// Server id of this scan (null for old history items without one).
+  final String? scanId;
+
+  /// First scan of the recovery series this scan belongs to.
+  final String? seriesId;
+  final PetProfile? pet;
+  final bool isFollowUp;
+
+  /// True straight after a scan (not when reopened from history).
+  final bool isNewResult;
+
   const ResultScreen({
     super.key,
     required this.resultData,
     required this.remainingScans,
     this.imageUrls,
+    this.scanId,
+    this.seriesId,
+    this.pet,
+    this.isFollowUp = false,
+    this.isNewResult = false,
   });
+
+  bool get _isLowRisk => resultData.criticality.toLowerCase() == 'low';
+  bool get _isUrgent => const ['high', 'emergency'].contains(resultData.criticality.toLowerCase());
+
+  String get _petName => pet?.name ?? 'your pet';
+
+  /// Schedules a recovery check-in and opens the tracker.
+  Future<void> _trackHealing(BuildContext context, {required int days}) async {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    final series = seriesId ?? scanId;
+    if (series == null) return;
+
+    await NotificationPrimer.ensure(context);
+    final now = DateTime.now();
+    final due = DateTime(now.year, now.month, now.day + days, 9);
+    await provider.addReminder(
+      title: resultData.possibleCondition.isEmpty ? 'Recovery check' : resultData.possibleCondition,
+      dueAt: due,
+      pet: pet,
+      recoveryScanId: series,
+    );
+    if (!context.mounted) return;
+    Navigator.pushReplacement(
+      context,
+      AppRoutes.sharedAxis(RecoveryScreen(seriesId: series)),
+    );
+  }
+
+  Future<void> _done(BuildContext context) async {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    Navigator.pop(context);
+    // Ask Play for a rating after a reassuring result. Play decides whether
+    // the card appears; nothing is asked first (Play policy).
+    if (isNewResult && _isLowRisk) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      await provider.maybeRequestReview();
+    }
+  }
+
+  void _askVet(BuildContext context) {
+    final condition = resultData.possibleCondition.isEmpty
+        ? 'this result'
+        : resultData.possibleCondition.toLowerCase();
+    Navigator.push(
+      context,
+      AppRoutes.sharedAxis(
+        VetChatScreen(
+          initialMessage: "About $_petName's scan (${resultData.criticality} risk, $condition): ",
+        ),
+      ),
+    );
+  }
+
+  Future<void> _findEmergencyVet() async {
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=emergency+vet+near+me');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   Color _getCriticalityColor() {
     switch (resultData.criticality.toLowerCase()) {
@@ -144,6 +226,21 @@ class ResultScreen extends StatelessWidget {
                   needVet: resultData.needVet,
                   visitWithin: resultData.visitWithin,
                 ),
+                if (_isUrgent) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  PrimaryButton(
+                    text: 'Find an emergency vet near me',
+                    icon: Icons.local_hospital_rounded,
+                    variant: ButtonVariant.tonal,
+                    backgroundColor: AppColors.criticalityEmergency,
+                    height: 50,
+                    onPressed: _findEmergencyVet,
+                  ),
+                ],
+                if (scanId != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _FeedbackCard(scanId: scanId!),
+                ],
 
                 const SizedBox(height: AppSpacing.xl),
 
@@ -197,15 +294,43 @@ class ResultScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '$remainingScans scan${remainingScans == 1 ? '' : 's'} left',
-                  style: theme.textTheme.bodySmall,
-                ),
+                if (isFollowUp && seriesId != null)
+                  PrimaryButton(
+                    text: 'See recovery progress',
+                    icon: Icons.show_chart_rounded,
+                    onPressed: () => Navigator.pushReplacement(
+                      context,
+                      AppRoutes.sharedAxis(RecoveryScreen(seriesId: seriesId!)),
+                    ),
+                  )
+                else if (!_isLowRisk && (seriesId ?? scanId) != null)
+                  PrimaryButton(
+                    text: 'Track healing · remind me in 3 days',
+                    icon: Icons.trending_up_rounded,
+                    onPressed: () => _trackHealing(context, days: 3),
+                  )
+                else
+                  PrimaryButton(
+                    text: 'Done',
+                    icon: Icons.check_rounded,
+                    onPressed: () => _done(context),
+                  ),
                 const SizedBox(height: AppSpacing.sm),
                 PrimaryButton(
-                  text: 'Scan another pet',
-                  icon: Icons.refresh_rounded,
-                  onPressed: () => Navigator.pop(context),
+                  text: 'Ask AI Vet about this result',
+                  icon: Icons.chat_bubble_rounded,
+                  variant: ButtonVariant.tonal,
+                  backgroundColor: kVetFabColor,
+                  height: 48,
+                  onPressed: () => _askVet(context),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  Provider.of<AppProvider>(context).isPlus
+                      ? 'PetCare Plus · unlimited scans'
+                      : '$remainingScans scan${remainingScans == 1 ? '' : 's'} left · '
+                          'AI guidance, not a diagnosis',
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
@@ -765,5 +890,65 @@ class _ExpandableCardState extends State<_ExpandableCard> {
     }
 
     return Text(widget.body ?? '', style: theme.textTheme.bodyMedium);
+  }
+}
+
+/// "Did this match what you see?" Accuracy feedback for the report. It is
+/// deliberately unrelated to store ratings (Play forbids gating reviews).
+class _FeedbackCard extends StatefulWidget {
+  final String scanId;
+
+  const _FeedbackCard({required this.scanId});
+
+  @override
+  State<_FeedbackCard> createState() => _FeedbackCardState();
+}
+
+class _FeedbackCardState extends State<_FeedbackCard> {
+  bool? _answer;
+
+  void _send(bool accurate) {
+    setState(() => _answer = accurate);
+    Provider.of<AppProvider>(context, listen: false)
+        .sendScanFeedback(widget.scanId, accurate: accurate);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: AppRadius.brLg,
+        border: Border.all(color: AppColors.alpha(AppColors.border, 0.7)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _answer == null ? 'Did this match what you see?' : 'Thanks for the feedback!',
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          if (_answer == null) ...[
+            IconButton(
+              tooltip: 'Yes, accurate',
+              onPressed: () => _send(true),
+              icon: const Icon(Icons.thumb_up_alt_outlined, color: AppColors.primaryDark),
+            ),
+            IconButton(
+              tooltip: 'No, not accurate',
+              onPressed: () => _send(false),
+              icon: const Icon(Icons.thumb_down_alt_outlined, color: AppColors.textMuted),
+            ),
+          ] else
+            Icon(
+              _answer! ? Icons.thumb_up_alt_rounded : Icons.thumb_down_alt_rounded,
+              color: AppColors.primaryDark,
+            ),
+        ],
+      ),
+    );
   }
 }
