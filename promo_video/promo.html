@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pet Scan AI Promo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#10B981; --primaryDark:#059669; --primaryLight:#D1FAE5;
+  --ink:#062A25; --inkSoft:#0E4A40; --teal:#0E9488; --deep:#0B5F58;
+  --accent:#FFB37B; --accentDark:#F08A3E; --accentLight:#FFF1E4;
+  --bg:#F6F8F7; --muted:#6B7280; --border:#E5E7EB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--ink)}
+body{font-family:'Plus Jakarta Sans','Segoe UI',sans-serif;color:var(--ink)}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+.abs{position:absolute}
+.layer{position:absolute;inset:0}
+.scene{position:absolute;inset:0;opacity:0}
+
+#bgDark{background:
+  radial-gradient(900px 700px at 80% 20%, rgba(16,185,129,.35), transparent 60%),
+  radial-gradient(800px 600px at 10% 90%, rgba(14,148,136,.35), transparent 60%),
+  linear-gradient(135deg,#062A25 0%,#0E4A40 55%,#0B5F58 100%)}
+#bgLight{background:
+  radial-gradient(700px 500px at 88% 12%, rgba(16,185,129,.16), transparent 65%),
+  radial-gradient(700px 600px at 6% 95%, rgba(255,179,123,.20), transparent 60%),
+  #F6F8F7}
+#bgDark2{background:
+  radial-gradient(900px 700px at 50% 45%, rgba(16,185,129,.40), transparent 60%),
+  linear-gradient(160deg,#062A25 0%,#0E4A40 60%,#0B5F58 100%)}
+.paw{position:absolute;left:0;top:0;width:70px;height:70px}
+
+.h1{font-weight:800;letter-spacing:-2px;line-height:1.02}
+.eyebrow{font-weight:700;letter-spacing:6px;text-transform:uppercase;font-size:22px;color:var(--primary)}
+.pill{display:inline-flex;align-items:center;gap:12px;padding:16px 26px;border-radius:999px;font-weight:700;font-size:24px;white-space:nowrap}
+
+#introTitle{left:150px;top:390px;font-size:128px;color:#fff}
+#introTitle span{display:inline-block}
+#introTitle .ai{background:linear-gradient(90deg,#34D399,#FFB37B);-webkit-background-clip:text;background-clip:text;color:transparent}
+#introTag{left:156px;top:560px;font-size:40px;color:rgba(255,255,255,.85);font-weight:500}
+#introLogoWrap{left:150px;top:200px}
+#introLogo{width:170px;height:170px;border-radius:40px;background:#fff;box-shadow:0 30px 60px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;overflow:hidden}
+#introLogo img{width:150px}
+#introPets{left:1020px;top:130px;width:820px;height:900px}
+#introGlow{position:absolute;left:90px;top:120px;width:640px;height:640px;border-radius:50%;
+  background:radial-gradient(circle,rgba(52,211,153,.55),rgba(16,185,129,.1) 60%,transparent 70%)}
+#introRing{position:absolute;left:110px;top:140px;width:600px;height:600px;border-radius:50%;border:3px solid rgba(255,255,255,.35)}
+#introDog{position:absolute;left:110px;top:130px;width:620px}
+.badge{position:absolute;background:#fff;border-radius:22px;padding:16px 22px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 20px 40px rgba(0,0,0,.25);font-weight:700;font-size:24px;color:var(--ink);white-space:nowrap}
+.badge .ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px}
+#introCTAline{left:156px;top:660px}
+
+#probTitle{left:0;right:0;top:400px;text-align:center;font-size:92px}
+#probTitle2{left:0;right:0;top:520px;text-align:center;font-size:92px;color:var(--primary)}
+.qb{position:absolute;background:#fff;border-radius:28px;padding:22px 30px;font-size:30px;font-weight:600;
+  box-shadow:0 18px 40px rgba(6,42,37,.12);white-space:nowrap;border:2px solid #E6F4EE}
+.qb:after{content:"";position:absolute;bottom:-14px;left:40px;width:28px;height:28px;background:#fff;transform:rotate(45deg);
+  border-right:2px solid #E6F4EE;border-bottom:2px solid #E6F4EE;border-radius:0 0 6px 0}
+.qb .e{margin-right:10px}
+
+#howEyebrow{left:160px;top:170px}
+#howTitle{left:160px;top:210px;font-size:84px;width:1000px}
+.step{position:absolute;left:160px;width:820px;display:flex;align-items:center;gap:28px;padding:22px 28px;border-radius:30px}
+.step .n{width:76px;height:76px;border-radius:24px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:34px;background:#E3EFEA;color:var(--inkSoft)}
+.step .tt{font-size:40px;font-weight:800}
+.step .ds{font-size:24px;color:var(--muted);font-weight:500;margin-top:4px}
+.step.on{background:#fff;box-shadow:0 24px 50px rgba(6,42,37,.12)}
+.step.on .n{background:linear-gradient(135deg,#10B981,#0E9488);color:#fff}
+
+.phone{position:absolute;width:420px;height:860px;border-radius:62px;background:#0B1F1C;padding:13px;
+  box-shadow:0 60px 120px rgba(6,42,37,.35), inset 0 0 0 2px #24403A}
+.screen{position:relative;width:100%;height:100%;border-radius:50px;overflow:hidden;background:#F6F8F7}
+.notch{position:absolute;left:50%;top:12px;width:110px;height:30px;margin-left:-55px;background:#0B1F1C;border-radius:20px;z-index:50}
+.sbar{position:absolute;left:0;right:0;top:0;height:54px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0;font-size:15px;font-weight:700;z-index:40;background:#F6F8F7}
+.view{position:absolute;inset:0;padding:66px 22px 22px;opacity:0}
+.vh{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--primary);text-transform:uppercase}
+.vt{font-size:26px;font-weight:800;margin-top:4px;letter-spacing:-.5px}
+.vs{font-size:14px;color:var(--muted);margin-top:4px;font-weight:500}
+.lbl{font-size:15px;font-weight:800;margin:20px 0 10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pchip{height:88px;border-radius:20px;background:#fff;border:2px solid #E8EEEB;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:14px;gap:4px}
+.pchip .em{font-size:30px;line-height:1}
+.pchip.on{background:#ECFDF5;border-color:var(--primary);color:var(--primaryDark)}
+.wrap{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:10px 16px;border-radius:999px;background:#fff;border:2px solid #E8EEEB;font-weight:700;font-size:14px;white-space:nowrap}
+.chip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn{position:absolute;left:22px;right:22px;bottom:26px;height:58px;border-radius:20px;background:linear-gradient(135deg,#10B981,#0E9488);
+  color:#fff;font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 12px 24px rgba(16,185,129,.35)}
+.cam{margin-top:16px;height:420px;border-radius:26px;overflow:hidden;position:relative;background:#e9dccb}
+.cam .ph{position:absolute;inset:0;background:url(dog_cat.png) no-repeat;background-size:720px auto;background-position:-60px -20px}
+.corner{position:absolute;width:44px;height:44px;border:5px solid #fff;border-radius:6px}
+.shutter{position:absolute;left:50%;bottom:34px;width:86px;height:86px;margin-left:-43px;border-radius:50%;background:#fff;border:6px solid #D1FAE5;box-shadow:0 10px 24px rgba(0,0,0,.2)}
+.thumbs{display:flex;gap:10px;margin-top:14px}
+.thumb{width:84px;height:84px;border-radius:18px;border:2px dashed #CFE3DA;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font-size:28px;overflow:hidden;position:relative}
+.thumb.fill{border:none}
+.thumb.fill .ph{position:absolute;inset:0;background:url(dog_cat.png) no-repeat;background-size:170px auto;background-position:-18px -6px}
+.ta{margin-top:14px;background:#fff;border:2px solid #E8EEEB;border-radius:18px;padding:14px;font-size:15px;min-height:96px;font-weight:500;line-height:1.4}
+.caret{display:inline-block;width:2px;height:18px;background:var(--primary);vertical-align:-3px;margin-left:1px}
+.scanline{position:absolute;left:0;right:0;height:110px;background:linear-gradient(180deg,transparent,rgba(16,185,129,.55));border-bottom:3px solid #6EE7B7}
+.prog{height:12px;border-radius:99px;background:#E3EFEA;overflow:hidden;margin-top:14px}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,#10B981,#0E9488);border-radius:99px}
+.card{background:#fff;border-radius:22px;padding:16px;box-shadow:0 6px 18px rgba(6,42,37,.06);margin-top:12px}
+.urg{background:#FEF3C7;border:2px solid #FCD34D}
+.cond{margin-top:12px}
+.cond .row{display:flex;justify-content:space-between;font-size:15px;font-weight:700}
+.bar{height:10px;border-radius:99px;background:#EEF2F0;margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+.li{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:600;margin-top:10px;line-height:1.35}
+.li b{flex:none;width:24px;height:24px;border-radius:8px;background:#ECFDF5;color:var(--primaryDark);display:flex;align-items:center;justify-content:center;font-size:13px}
+.touch{position:absolute;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,.55);
+  border:3px solid rgba(6,42,37,.55);box-shadow:0 6px 16px rgba(0,0,0,.25);z-index:60;pointer-events:none}
+.ripple{position:absolute;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;border:4px solid var(--primary);z-index:59}
+.flash{position:absolute;inset:0;background:#fff;z-index:45;opacity:0}
+
+.chead{display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid #E8EEEB}
+.av{width:46px;height:46px;border-radius:16px;background:linear-gradient(135deg,#10B981,#0E9488);display:flex;align-items:center;justify-content:center;font-size:24px}
+.msg{max-width:84%;padding:12px 15px;border-radius:20px;font-size:15px;font-weight:500;line-height:1.45;margin-top:12px}
+.me{margin-left:auto;background:var(--primary);color:#fff;border-bottom-right-radius:6px}
+.bot{background:#fff;border-bottom-left-radius:6px;box-shadow:0 4px 12px rgba(6,42,37,.06)}
+.dots span{display:inline-block;width:9px;height:9px;border-radius:50%;background:#9CA3AF;margin:0 3px}
+.inbar{position:absolute;left:16px;right:16px;bottom:22px;height:56px;border-radius:20px;background:#fff;border:2px solid #E8EEEB;display:flex;align-items:center;padding:0 8px 0 16px;font-size:15px;font-weight:500;color:#9CA3AF}
+.send{margin-left:auto;width:42px;height:42px;border-radius:14px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px}
+.sug{padding:8px 12px;border-radius:999px;background:#ECFDF5;color:var(--primaryDark);font-weight:700;font-size:13px;border:1.5px solid #A7F3D0;white-space:nowrap}
+
+#featTitle{left:0;right:0;top:120px;text-align:center;font-size:76px}
+.fcard{position:absolute;width:500px;height:250px;background:#fff;border-radius:36px;padding:36px;box-shadow:0 24px 50px rgba(6,42,37,.10)}
+.fcard .fi{width:78px;height:78px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:40px}
+.fcard .ft{font-size:32px;font-weight:800;margin-top:22px;letter-spacing:-.5px}
+.fcard .fd{font-size:21px;color:var(--muted);font-weight:500;margin-top:6px}
+
+#ctaLogo{left:845px;top:170px;width:230px;height:230px;border-radius:56px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 40px 80px rgba(0,0,0,.35)}
+#ctaLogo img{width:200px}
+#ctaTitle{left:0;right:0;top:440px;text-align:center;color:#fff;font-size:120px}
+#ctaTag{left:0;right:0;top:590px;text-align:center;color:rgba(255,255,255,.88);font-size:44px;font-weight:600}
+#ctaBtnWrap{left:0;right:0;top:700px;display:flex;justify-content:center}
+.play{display:flex;align-items:center;gap:22px;background:#000;border:2px solid rgba(255,255,255,.35);color:#fff;border-radius:26px;padding:20px 40px 20px 30px}
+.play small{display:block;font-size:18px;font-weight:600;letter-spacing:1px;opacity:.85}
+.play strong{display:block;font-size:40px;font-weight:800;letter-spacing:-.5px}
+#ctaDisc{left:0;right:0;top:980px;text-align:center;color:rgba(255,255,255,.55);font-size:20px;font-weight:500}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="layer" id="bgDark"></div>
+  <div class="layer" id="bgLight"></div>
+  <div class="layer" id="bgDark2"></div>
+  <div class="layer" id="paws"></div>
+
+  <!-- S1 INTRO -->
+  <div class="scene" id="s1" data-scene="0,5.3">
+    <div class="abs" id="introLogoWrap" data-in="0.2" data-fx="pop" data-dur="0.8"><div id="introLogo"><img src="logo.png"></div></div>
+    <div class="abs h1" id="introTitle"><span data-in="0.6" data-fx="up">Pet</span> <span data-in="0.75" data-fx="up">Scan</span> <span class="ai" data-in="0.9" data-fx="up">AI</span></div>
+    <div class="abs" id="introTag" data-in="1.3" data-fx="up">Your pet's health, understood in seconds.</div>
+    <div class="abs" id="introCTAline" data-in="1.8" data-fx="up">
+      <span class="pill" style="background:rgba(255,255,255,.12);color:#fff;border:2px solid rgba(255,255,255,.25)">✨ AI-powered pet health assistant</span>
+    </div>
+    <div class="abs" id="introPets">
+      <div id="introGlow" data-in="0.9" data-fx="zoomin" data-dur="1"></div>
+      <div id="introRing"></div>
+      <img id="introDog" src="dog_cat.png" data-in="1.1" data-fx="rise" data-dur="0.9">
+      <div class="badge" style="left:0;top:200px" data-in="2.0" data-fx="pop" data-float="10,3,0"><div class="ic" style="background:#ECFDF5">📸</div>AI Health Scan</div>
+      <div class="badge" style="left:560px;top:120px" data-in="2.3" data-fx="pop" data-float="12,3.4,1"><div class="ic" style="background:#FFF1E4">🩺</div>24/7 AI Vet</div>
+      <div class="badge" style="left:540px;top:620px" data-in="2.6" data-fx="pop" data-float="9,2.8,2"><div class="ic" style="background:#FEF3C7">📋</div>Instant Report</div>
+    </div>
+  </div>
+
+  <!-- S2 PROBLEM -->
+  <div class="scene" id="s2" data-scene="5.1,9.5">
+    <div class="abs h1" id="probTitle" data-in="5.6" data-fx="up">Noticed something off?</div>
+    <div class="abs h1" id="probTitle2" data-in="7.5" data-fx="up">Get answers in seconds.</div>
+    <div class="qb" style="left:180px;top:170px" data-in="6.0" data-fx="pop" data-float="10,3,0"><span class="e">🐶</span>Why is he scratching so much?</div>
+    <div class="qb" style="left:1180px;top:210px" data-in="6.3" data-fx="pop" data-float="10,3.3,1"><span class="e">🔴</span>Is this rash serious?</div>
+    <div class="qb" style="left:260px;top:760px" data-in="6.6" data-fx="pop" data-float="10,2.9,2"><span class="e">🐱</span>Why won't she eat?</div>
+    <div class="qb" style="left:1160px;top:790px" data-in="6.9" data-fx="pop" data-float="10,3.1,3"><span class="e">🏥</span>Do I need a vet right now?</div>
+  </div>
+
+  <!-- S3/S4 HOW IT WORKS -->
+  <div class="scene" id="s3" data-scene="9.4,28.7">
+    <div class="abs eyebrow" id="howEyebrow" data-in="9.7" data-fx="up">How it works</div>
+    <div class="abs h1" id="howTitle" data-in="9.8" data-fx="up">4 steps to peace of mind</div>
+    <div class="step" id="st1" style="top:390px" data-in="10.0" data-fx="left"><div class="n">1</div><div><div class="tt">Choose your pet</div><div class="ds">Dog, cat, rabbit, bird, cow, horse &amp; more</div></div></div>
+    <div class="step" id="st2" style="top:540px" data-in="10.15" data-fx="left"><div class="n">2</div><div><div class="tt">Snap a photo</div><div class="ds">Up to 3 clear close-ups of the problem area</div></div></div>
+    <div class="step" id="st3" style="top:690px" data-in="10.3" data-fx="left"><div class="n">3</div><div><div class="tt">Tap the symptoms</div><div class="ds">Itching, vomiting, limping &amp; 25+ more</div></div></div>
+    <div class="step" id="st4" style="top:840px" data-in="10.45" data-fx="left"><div class="n">4</div><div><div class="tt">Get your AI report</div><div class="ds">Likely conditions, urgency &amp; home-care tips</div></div></div>
+
+    <div class="phone" id="phoneA" style="left:1250px;top:110px" data-in="9.6" data-fx="phone" data-dur="0.9">
+      <div class="screen" id="scrA">
+        <div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>▂▄▆ 🔋</span></div>
+        <div class="flash" id="flashA"></div>
+
+        <div class="view" id="v1" data-in="10.2" data-out="13.3" data-fx="slide">
+          <div class="vh">Step one</div>
+          <div class="vt">Select your pet</div>
+          <div class="vs">Which animal are we looking at?</div>
+          <div class="lbl">Pet type</div>
+          <div class="grid3">
+            <div class="pchip" id="cDog" data-on="11.0"><span class="em">🐶</span>Dog</div>
+            <div class="pchip"><span class="em">🐱</span>Cat</div>
+            <div class="pchip"><span class="em">🐰</span>Rabbit</div>
+            <div class="pchip"><span class="em">🐦</span>Bird</div>
+            <div class="pchip"><span class="em">🐄</span>Cow</div>
+            <div class="pchip"><span class="em">🐴</span>Horse</div>
+          </div>
+          <div class="lbl">Where is the problem?</div>
+          <div class="wrap">
+            <div class="chip" id="cSkin" data-on="12.0">Skin</div><div class="chip">Eye</div><div class="chip">Ear</div><div class="chip">Paw</div>
+            <div class="chip">Mouth</div><div class="chip">Nose</div><div class="chip">Leg</div>
+          </div>
+          <div class="btn" id="bNext1">Next →</div>
+        </div>
+
+        <div class="view" id="v2" data-in="13.3" data-out="16.9" data-fx="slide">
+          <div class="vh">Step two</div>
+          <div class="vt">Snap your pet</div>
+          <div class="vs">Clear, well-lit close-ups work best</div>
+          <div class="cam">
+            <div class="ph" id="camPh"></div>
+            <div class="corner" style="left:30px;top:30px;border-right:none;border-bottom:none"></div>
+            <div class="corner" style="right:30px;top:30px;border-left:none;border-bottom:none"></div>
+            <div class="corner" style="left:30px;bottom:140px;border-right:none;border-top:none"></div>
+            <div class="corner" style="right:30px;bottom:140px;border-left:none;border-top:none"></div>
+            <div class="shutter" id="shutter"></div>
+          </div>
+          <div class="thumbs">
+            <div class="thumb" id="th1"><span>+</span></div><div class="thumb">+</div><div class="thumb">+</div>
+          </div>
+          <div class="btn" id="bNext2">Next →</div>
+        </div>
+
+        <div class="view" id="v3" data-in="16.9" data-out="21.0" data-fx="slide">
+          <div class="vh">Step three</div>
+          <div class="vt">Select visible symptoms</div>
+          <div class="vs">Tap everything you have noticed</div>
+          <div class="wrap" style="margin-top:18px">
+            <div class="chip" id="sItch" data-on="17.7">Itching</div><div class="chip" id="sRed" data-on="18.3">Redness</div>
+            <div class="chip">Vomiting</div><div class="chip">Diarrhea</div><div class="chip" id="sHair" data-on="18.9">Hair Loss</div>
+            <div class="chip">Limping</div><div class="chip">Lethargy</div><div class="chip">Swelling</div>
+            <div class="chip">Coughing</div><div class="chip">Sneezing</div><div class="chip">Loss of Appetite</div>
+            <div class="chip">Lumps or Bumps</div>
+          </div>
+          <div class="lbl">Describe it</div>
+          <div class="ta"><span id="typeA"></span><span class="caret" id="caretA"></span></div>
+          <div class="btn" id="bAnalyze">✨ Analyze with AI</div>
+        </div>
+
+        <div class="view" id="v4" data-in="21.0" data-out="23.4" data-fx="fade" style="text-align:center">
+          <div class="cam" style="height:430px;margin-top:10px">
+            <div class="ph"></div>
+            <div class="scanline" id="scanA"></div>
+          </div>
+          <div class="vt" style="margin-top:26px">AI reads the symptoms…</div>
+          <div class="vs">Checking photos, symptoms &amp; description</div>
+          <div class="prog"><i id="progA"></i></div>
+          <div class="vs" style="margin-top:10px;font-weight:800;color:var(--primaryDark)" id="pctA">0%</div>
+        </div>
+
+        <div class="view" id="v5" data-in="23.4" data-out="99" data-fx="slide">
+          <div id="resScroll">
+            <div class="vh">Assessment report</div>
+            <div class="vt">Dog · Skin</div>
+            <div class="card urg" data-in="23.8" data-fx="pop">
+              <div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px">
+                <span style="width:14px;height:14px;border-radius:50%;background:#F59E0B;display:inline-block"></span>Moderate urgency</div>
+              <div style="font-size:14px;font-weight:600;margin-top:6px;color:#92400E">Worth watching closely over the next few days.</div>
+            </div>
+            <div class="card" data-in="24.1" data-fx="up">
+              <div style="font-weight:800;font-size:16px">Possible conditions</div>
+              <div style="font-size:12px;color:var(--muted);font-weight:600">Ranked by likelihood</div>
+              <div class="cond"><div class="row"><span>Allergic dermatitis</span><span id="pc1">0%</span></div><div class="bar"><i id="b1" style="background:#10B981"></i></div></div>
+              <div class="cond"><div class="row"><span>Hot spot</span><span id="pc2">0%</span></div><div class="bar"><i id="b2" style="background:#0E9488"></i></div></div>
+              <div class="cond"><div class="row"><span>Flea allergy</span><span id="pc3">0%</span></div><div class="bar"><i id="b3" style="background:#FFB37B"></i></div></div>
+            </div>
+            <div class="card" data-in="24.6" data-fx="up">
+              <div style="font-weight:800;font-size:16px">🩺 What to do next</div>
+              <div class="li"><b>✓</b>See a vet within 3 days if redness spreads</div>
+            </div>
+            <div class="card" data-in="24.9" data-fx="up">
+              <div style="font-weight:800;font-size:16px">🏠 Home care instructions</div>
+              <div class="li"><b>1</b>Keep the area clean and dry</div>
+              <div class="li"><b>2</b>Stop licking &amp; scratching with a cone</div>
+              <div class="li"><b>3</b>Check for fleas and wash bedding</div>
+            </div>
+            <div class="card" data-in="25.1" data-fx="up" style="background:#FEE2E2">
+              <div style="font-weight:800;font-size:16px;color:#B91C1C">⚠️ Emergency signs to watch</div>
+              <div class="li" style="color:#7F1D1D"><b style="background:#fff;color:#B91C1C">!</b>Open wounds, bleeding or fever</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ripple" id="ripA"></div>
+        <div class="touch" id="touchA"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S5 AI VET CHAT -->
+  <div class="scene" id="s5" data-scene="28.6,36.7">
+    <div class="abs eyebrow" style="left:140px;top:120px" data-in="29.0" data-fx="up">Meet PawDoc</div>
+    <div class="abs h1" style="left:140px;top:160px;font-size:80px;width:1000px" data-in="29.1" data-fx="up">Your 24/7 AI vet, one message away</div>
+    <div class="abs" style="left:140px;top:350px;font-size:30px;color:var(--muted);font-weight:500;width:900px" data-in="29.3" data-fx="up">Ask about food, vaccines, behaviour or symptoms — get friendly, clear advice anytime.</div>
+    <div class="abs" style="left:170px;top:470px;width:640px" data-in="29.4" data-fx="rise" data-dur="0.9" data-float="12,3.2,0"><img src="doctor.png" style="width:640px"></div>
+
+    <div class="phone" style="left:1250px;top:110px" data-in="28.9" data-fx="phone" data-dur="0.9">
+      <div class="screen" id="scrB">
+        <div class="notch"></div>
+        <div class="sbar"><span>9:41</span><span>▂▄▆ 🔋</span></div>
+        <div class="view" style="opacity:1">
+          <div class="chead"><div class="av">🐾</div><div><div style="font-weight:800;font-size:18px">PawDoc</div>
+            <div style="font-size:12px;color:var(--primaryDark);font-weight:700">● Online · AI Vet Assistant</div></div></div>
+          <div class="msg bot" data-in="29.4" data-fx="pop">Hi! I'm PawDoc 🐾 Ask me anything about your pet.</div>
+          <div class="msg me" data-in="30.9" data-fx="pop">My dog won't eat today 😟 Should I worry?</div>
+          <div class="msg bot dots" id="dotsB" style="width:90px;opacity:0"><span></span><span></span><span></span></div>
+          <div class="msg bot" id="botMsg" style="opacity:0"><span id="typeB"></span></div>
+          <div class="wrap" style="margin-top:14px">
+            <div class="sug" data-in="34.8" data-fx="pop">Vaccination schedule 💉</div>
+            <div class="sug" data-in="34.95" data-fx="pop">Cat vomiting 🐱</div>
+            <div class="sug" data-in="35.1" data-fx="pop">Skin rash help 🔴</div>
+          </div>
+        </div>
+        <div class="inbar"><span id="typeC">Ask about your pet…</span><div class="send" id="sendB">➤</div></div>
+        <div class="ripple" id="ripB"></div>
+        <div class="touch" id="touchB"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S6 FEATURES -->
+  <div class="scene" id="s6" data-scene="36.6,41.7">
+    <div class="abs h1" id="featTitle" data-in="36.8" data-fx="up">Everything your pet needs</div>
+    <div class="fcard" style="left:150px;top:300px" data-in="37.1" data-fx="pop"><div class="fi" style="background:#ECFDF5">🐾</div><div class="ft">7 kinds of pets</div><div class="fd">Dogs, cats, rabbits, birds, horses Dogs, cats, rabbits, birds, cows, horses &amp; moreamp; more</div></div>
+    <div class="fcard" style="left:710px;top:300px" data-in="37.25" data-fx="pop"><div class="fi" style="background:#FFF1E4">⚡</div><div class="ft">Results in seconds</div><div class="fd">Advanced AI image analysis, instantly</div></div>
+    <div class="fcard" style="left:1270px;top:300px" data-in="37.4" data-fx="pop"><div class="fi" style="background:#FEF3C7">🚦</div><div class="ft">Urgency rating</div>
+      <div class="fd" style="display:flex;gap:10px;margin-top:12px">
+        <span class="pill" style="padding:6px 12px;font-size:16px;background:#ECFDF5;color:#047857">Low</span>
+        <span class="pill" style="padding:6px 12px;font-size:16px;background:#FEF3C7;color:#92400E">Moderate</span>
+        <span class="pill" style="padding:6px 12px;font-size:16px;background:#FFEDD5;color:#9A3412">High</span>
+        <span class="pill" style="padding:6px 12px;font-size:16px;background:#FEE2E2;color:#B91C1C">Emergency</span></div></div>
+    <div class="fcard" style="left:150px;top:600px" data-in="37.55" data-fx="pop"><div class="fi" style="background:#E0F2FE">📋</div><div class="ft">Scan history</div><div class="fd">Every report saved to share with your vet</div></div>
+    <div class="fcard" style="left:710px;top:600px" data-in="37.7" data-fx="pop"><div class="fi" style="background:#FCE7F3">🎁</div><div class="ft">Free scans to start</div><div class="fd">5 free scans + a free scan every day</div></div>
+    <div class="fcard" style="left:1270px;top:600px" data-in="37.85" data-fx="pop"><div class="fi" style="background:#EDE9FE">🔒</div><div class="ft">Private &amp; secure</div><div class="fd">One-tap Google sign-in</div></div>
+  </div>
+
+  <!-- S7 CTA -->
+  <div class="scene" id="s7" data-scene="41.5,99">
+    <div class="abs" id="ctaLogo" data-in="41.9" data-fx="pop" data-dur="0.8"><img src="logo.png"></div>
+    <div class="abs h1" id="ctaTitle" data-in="42.3" data-fx="up">Pet Scan AI</div>
+    <div class="abs" id="ctaTag" data-in="42.6" data-fx="up">Care smarter. Worry less. 💚</div>
+    <div class="abs" id="ctaBtnWrap" data-in="43.0" data-fx="pop">
+      <div class="play" id="playBtn">
+        <svg width="56" height="60" viewBox="0 0 56 60"><path d="M6 4 L52 30 L6 56 Z" fill="#10B981" stroke="#34D399" stroke-width="4" stroke-linejoin="round"/></svg>
+        <div><small>DOWNLOAD NOW ON</small><strong>Google Play</strong></div>
+      </div>
+    </div>
+    <div class="abs" id="ctaDisc" data-in="43.4" data-fx="fade">AI guidance only — not a substitute for professional veterinary care.</div>
+  </div>
+</div>
+
+<script>
+const DURATION = 47;
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, s, d) => clamp((t - s) / d);
+const eo = x => 1 - Math.pow(1 - x, 3);
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eb = x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// drifting paw prints in the background
+const PAW = '<svg viewBox="0 0 64 64"><g fill="currentColor"><ellipse cx="32" cy="42" rx="14" ry="12"/><circle cx="14" cy="26" r="7"/><circle cx="26" cy="15" r="7"/><circle cx="38" cy="15" r="7"/><circle cx="50" cy="26" r="7"/></g></svg>';
+const paws = [];
+for (let i = 0; i < 14; i++) {
+  const d = document.createElement('div');
+  d.className = 'paw'; d.innerHTML = PAW;
+  $('paws').appendChild(d);
+  paws.push({ el: d, x: (i * 263) % 1920, y: (i * 397) % 1080, r: (i * 47) % 360, sp: 18 + (i % 5) * 7, sz: .6 + (i % 4) * .25 });
+}
+
+const genericEls = [...document.querySelectorAll('[data-in]')];
+const sceneEls = [...document.querySelectorAll('[data-scene]')];
+const onEls = [...document.querySelectorAll('[data-on]')];
+
+function applyGeneric(el, t) {
+  const a = +el.dataset.in, d = +(el.dataset.dur || .6), fx = el.dataset.fx || 'up';
+  const k = p(t, a, d);
+  let o = 1, x = 0, y = 0, s = 1, r = 0;
+  switch (fx) {
+    case 'up': o = eo(k); y = 50 * (1 - eo(k)); break;
+    case 'left': o = eo(k); x = -90 * (1 - eo(k)); break;
+    case 'slide': o = eo(k); x = 60 * (1 - eo(k)); break;
+    case 'fade': o = eo(k); break;
+    case 'pop': o = clamp(k * 2.5); s = .3 + .7 * eb(k); break;
+    case 'rise': o = clamp(k * 2); y = 260 * (1 - eo(k)); break;
+    case 'zoomin': o = eo(k); s = .5 + .5 * eo(k); break;
+    case 'phone': o = clamp(k * 2); y = 500 * (1 - eo(k)); r = 8 * (1 - eo(k)); break;
+  }
+  if (el.dataset.out) {
+    const ko = eio(p(t, +el.dataset.out - .35, .35));
+    o *= 1 - ko; x -= 60 * ko;
+  }
+  if (el.dataset.float) {
+    const [amp, per, ph] = el.dataset.float.split(',').map(Number);
+    y += amp * Math.sin((t / per) * Math.PI * 2 + ph);
+  }
+  el.style.opacity = o;
+  el.style.transform = `translate(${x}px,${y}px) scale(${s}) rotate(${r}deg)`;
+}
+
+// centre of an element relative to a screen root (ignores transforms)
+function rel(el, root) {
+  let x = 0, y = 0, n = el;
+  while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+  return [x + el.offsetWidth / 2, y + el.offsetHeight / 2];
+}
+
+// touch paths: [time, targetId | [x,y], tap?]
+const TRACK_A = [
+  [10.4, [300, 700]], [11.0, 'cDog', 1], [12.0, 'cSkin', 1], [12.9, 'bNext1', 1],
+  [14.4, 'shutter', 1], [16.4, 'bNext2', 1],
+  [17.7, 'sItch', 1], [18.3, 'sRed', 1], [18.9, 'sHair', 1], [20.6, 'bAnalyze', 1], [21.2, [300, 740]]
+];
+const TRACK_B = [[29.6, [300, 760]], [30.6, 'sendB', 1], [31.0, [320, 760]]];
+const TAPS = [];
+let trA, trB;
+
+function resolve(track, root) {
+  return track.map(([tt, tg, tap]) => {
+    const pos = Array.isArray(tg) ? tg : rel($(tg), root);
+    if (tap) TAPS.push(tt);
+    return { t: tt, x: pos[0], y: pos[1], tap: !!tap };
+  });
+}
+
+function drive(track, t, touch, rip, show0, show1) {
+  let x = track[0].x, y = track[0].y;
+  for (let i = 0; i < track.length - 1; i++) {
+    const A = track[i], B = track[i + 1];
+    if (t >= A.t && t <= B.t) {
+      const k = eio(p(t, A.t + .1, Math.max(.2, (B.t - A.t) * .6)));
+      x = lerp(A.x, B.x, k); y = lerp(A.y, B.y, k); break;
+    }
+    if (t > B.t) { x = B.x; y = B.y; }
+  }
+  let s = 1, ro = 0, rs = 1;
+  for (const k of track) if (k.tap) {
+    const dt = t - k.t;
+    if (dt > -.12 && dt < .12) s = Math.min(s, .78 + .22 * Math.abs(dt) / .12);
+    if (dt >= 0 && dt < .5) { ro = 1 - dt / .5; rs = 1 + dt * 4; }
+  }
+  const vis = Math.min(eo(p(t, show0, .3)), 1 - eo(p(t, show1, .3)));
+  touch.style.opacity = vis;
+  touch.style.left = x + 'px'; touch.style.top = y + 'px';
+  touch.style.transform = `scale(${s})`;
+  rip.style.opacity = ro * vis; rip.style.left = x + 'px'; rip.style.top = y + 'px';
+  rip.style.transform = `scale(${rs})`;
+}
+
+function typeInto(el, text, t, t0, cps) {
+  const chars = [...text];
+  const n = Math.floor(clamp((t - t0) * cps, 0, chars.length));
+  el.textContent = chars.slice(0, n).join('');
+  return n;
+}
+
+const TXT_A = 'Scratching his neck a lot and the skin looks red.';
+const TXT_B = "Skipping one meal is usually okay 🐾 Offer fresh water and a bland meal like boiled chicken & rice. Watch for vomiting or lethargy — if he still refuses food after 24 hours, please see a vet.";
+const TXT_C = "My dog won't eat today 😟 Should I worry?";
+
+function seek(t) {
+  $('bgLight').style.clipPath = `circle(${eio(p(t, 4.9, .8)) * 2300}px at 50% 50%)`;
+  $('bgDark2').style.clipPath = `circle(${eio(p(t, 41.3, .8)) * 2300}px at 50% 50%)`;
+  const light = t > 5.3 && t < 41.8;
+  for (const q of paws) {
+    const yy = ((q.y - t * q.sp) % 1180 + 1180) % 1180 - 100;
+    q.el.style.transform = `translate(${q.x}px,${yy}px) rotate(${q.r + t * 6}deg) scale(${q.sz})`;
+    q.el.style.color = light ? 'rgba(16,185,129,.05)' : 'rgba(255,255,255,.06)';
+  }
+  for (const el of sceneEls) {
+    const [a, b] = el.dataset.scene.split(',').map(Number);
+    const ki = eo(p(t, a, .5)), ko = eio(p(t, b - .5, .5));
+    el.style.display = (t < a - .05 || t > b + .05) ? 'none' : 'block';
+    el.style.opacity = Math.min(ki, 1 - ko);
+    el.style.transform = `scale(${lerp(1.04, 1, ki) + ko * .06})`;
+  }
+  for (const el of genericEls) applyGeneric(el, t);
+
+  const rp = (t % 1.6) / 1.6;
+  $('introRing').style.transform = `scale(${1 + rp * .25})`;
+  $('introRing').style.opacity = (1 - rp) * eo(p(t, 1.4, .5));
+
+  for (const el of onEls) {
+    const at = +el.dataset.on;
+    el.classList.toggle('on', t >= at);
+    el.style.transform = `scale(${1 + .1 * Math.sin(Math.PI * p(t, at, .25))})`;
+  }
+  const idx = t < 13.3 ? 1 : t < 16.9 ? 2 : t < 21 ? 3 : 4;
+  for (let i = 1; i <= 4; i++) {
+    const on = i === idx && t > 10.6;
+    $('st' + i).classList.toggle('on', on);
+    $('st' + i).style.filter = on || t < 10.6 ? 'none' : 'opacity(.45)';
+  }
+  for (const [id, at] of [['bNext1', 12.9], ['bNext2', 16.4], ['bAnalyze', 20.6], ['sendB', 30.6], ['shutter', 14.4]]) {
+    $(id).style.transform = `scale(${1 - .08 * Math.sin(Math.PI * p(t, at - .05, .25))})`;
+  }
+  // camera
+  $('flashA').style.opacity = t > 14.45 ? Math.max(0, .9 - (t - 14.45) * 3) : 0;
+  $('camPh').style.transform = `scale(${1 + .05 * eo(p(t, 13.5, 1))})`;
+  const filled = t > 14.6;
+  $('th1').classList.toggle('fill', filled);
+  $('th1').innerHTML = filled ? '<div class="ph"></div>' : '<span>+</span>';
+  $('th1').style.transform = filled ? `scale(${.4 + .6 * eb(p(t, 14.6, .4))})` : 'none';
+  // description typing
+  const nA = typeInto($('typeA'), TXT_A, t, 19.2, 40);
+  $('caretA').style.opacity = (nA > 0 && nA < TXT_A.length) || Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
+  // analyzing
+  const sp = (((t - 21) % 1.3) + 1.3) % 1.3 / 1.3;
+  $('scanA').style.top = (-110 + sp * 540) + 'px';
+  const pr = eio(p(t, 21.2, 2));
+  $('progA').style.width = pr * 100 + '%';
+  $('pctA').textContent = Math.round(pr * 100) + '%';
+  // result
+  [[78, 24.3], [52, 24.45], [31, 24.6]].forEach(([v, at], i) => {
+    const k = eo(p(t, at, 1));
+    $('b' + (i + 1)).style.width = v * k + '%';
+    $('pc' + (i + 1)).textContent = Math.round(v * k) + '%';
+  });
+  $('resScroll').style.transform = `translateY(${-170 * eio(p(t, 25.9, 1.4))}px)`;
+
+  // chat
+  if (t >= 29.7 && t < 30.8) typeInto($('typeC'), TXT_C, t, 29.7, 38);
+  else $('typeC').textContent = 'Ask about your pet…';
+  $('typeC').style.color = (t >= 29.7 && t < 30.8) ? '#062A25' : '#9CA3AF';
+  $('dotsB').style.display = t < 32.2 ? 'block' : 'none';
+  $('dotsB').style.opacity = t > 31.2 && t < 32.2 ? 1 : 0;
+  [...$('dotsB').children].forEach((d, i) => d.style.transform = `translateY(${-6 * Math.max(0, Math.sin(t * 9 - i * .8))}px)`);
+  $('botMsg').style.display = t >= 32.2 ? 'block' : 'none';
+  $('botMsg').style.opacity = eo(p(t, 32.2, .25));
+  typeInto($('typeB'), TXT_B, t, 32.2, 80);
+
+  drive(trA, t, $('touchA'), $('ripA'), 10.4, 21.0);
+  drive(trB, t, $('touchB'), $('ripB'), 29.6, 30.9);
+
+  const g = .5 + .5 * Math.sin(t * 4);
+  $('playBtn').style.boxShadow = `0 0 ${30 + 30 * g}px rgba(16,185,129,${.35 + .3 * g})`;
+}
+
+window.READY = (async () => {
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+  trA = resolve(TRACK_A, $('scrA'));
+  trB = resolve(TRACK_B, $('scrB'));
+  seek(0);
+  return { duration: DURATION, taps: TAPS };
+})();
+window.seek = seek;
+
+// open promo.html?play to watch it live in a browser
+if (location.search.includes('play')) {
+  window.READY.then(() => {
+    const t0 = performance.now();
+    const loop = () => { seek(((performance.now() - t0) / 1000) % DURATION); requestAnimationFrame(loop); };
+    loop();
+  });
+}
+</script>
+</body>
+</html>
